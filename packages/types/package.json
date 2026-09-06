@@ -1,0 +1,30 @@
+{
+  "name": "@qvanta/types",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "echo \"No lint configured\" && exit 0",
+    "typecheck": "tsc --noEmit"
+  },
+  "tsup": {
+    "entry": ["src/index.ts"],
+    "format": ["cjs", "esm"],
+    "dts": true,
+    "sourcemap": true,
+    "clean": true
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsup": "^8.0.0"
+  }
+}

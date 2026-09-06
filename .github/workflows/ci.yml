@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm 9
+        uses: pnpm/action-setup@v3
+        with:
+          version: '9'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Run build
+        run: pnpm build
+
+      - name: Install simulator dependencies
+        run: |
+          cd apps/simulator
+          pip install -r requirements.txt
+
+      - name: Simulator healthcheck import
+        run: |
+          cd apps/simulator
+          python -c "import main; print('Simulator import healthy')"

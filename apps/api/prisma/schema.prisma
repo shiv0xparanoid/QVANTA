@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  instructor
+  admin
+  org_admin
+}
+
+enum UserTier {
+  free
+  pro
+  institution
+}
+
+enum LessonProgress {
+  not_started
+  started
+  completed
+}
+
+model User {
+  id               String              @id @default(uuid())
+  email            String              @unique
+  googleId         String?             @unique
+  passwordHash     String?
+  role             UserRole            @default(student)
+  tier             UserTier            @default(free)
+  usageMonth       String              @default("1970-01")
+  usageSims        Int                 @default(0)
+  avatarPreset     Int                 @default(0)
+  stripeCustomerId String?             @unique
+  createdAt        DateTime            @default(now())
+  conversations   Conversation[]
+  progress        UserProgress[]
+  subscriptionEvents SubscriptionEvent[]
+  refreshTokens   RefreshToken[]
+  circuits        Circuit[]           @relation("UserCircuits")
+  organizations   OrganizationMember[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  members   OrganizationMember[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  role           UserRole     @default(student)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model CourseModule {
+  id          String         @id @default(uuid())
+  title       String
+  slug        String         @unique
+  mdxContent  String
+  embedding   Unsupported("vector(1536)")?
+  embedded    Boolean        @default(false)
+  order       Int?
+  createdAt   DateTime       @default(now())
+  progress    UserProgress[]
+
+  @@map("course_modules")
+}
+
+model UserProgress {
+  userId   String
+  moduleId String
+  status   LessonProgress @default(not_started)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module   CourseModule   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, moduleId])
+  @@map("user_progress")
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Json     @default("[]")
+  circuitId  String?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@map("conversations")
+}
+
+model SubscriptionEvent {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeEventId  String   @unique
+  type           String
+  payload        Json
+  createdAt      DateTime @default(now())
+
+  @@map("subscription_events")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Circuit {
+  id         String   @id @default(uuid())
+  ownerId    String
+  owner      User     @relation("UserCircuits", fields: [ownerId], references: [id], onDelete: Cascade)
+  name       String
+  qubits     Int
+  timesteps  Int
+  operations Json
+  createdAt  DateTime @default(now())
+
+  @@index([ownerId])
+  @@map("circuits")
+}
