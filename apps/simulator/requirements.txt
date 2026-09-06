@@ -1,0 +1,8 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+qiskit==1.0.2
+qiskit-aer==0.14.0.1
+redis==5.0.3
+pydantic==2.6.4
+python-dotenv==1.0.1
+numpy==1.26.4

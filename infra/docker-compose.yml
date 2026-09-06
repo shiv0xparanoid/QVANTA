@@ -1,0 +1,23 @@
+services:
+  postgres-16:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: qvanta
+      POSTGRES_PASSWORD: qvanta
+      POSTGRES_DB: qvanta
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - qvanta-pgdata:/var/lib/postgresql/data
+
+  redis-7:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - qvanta-redis:/data
+
+volumes:
+  qvanta-pgdata:
+  qvanta-redis:
