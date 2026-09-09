@@ -26,8 +26,9 @@ pip-wheel-metadata
 *.db
 *.sqlite
 *.sqlite3
-*.sql
 *.dump
+# Exception: Prisma migration SQL files must be version-controlled
+!apps/*/prisma/migrations/**/*.sql
 
 # IDE / Editor
 .vscode
