@@ -336,4 +336,5 @@ The Python simulator isn't running. Either start it on port 8000 or ignore — t
 | 9 | Mobile-responsive sidebar + Lite 2D SVG fallback toggle | ✅ |
 | 10 | `npm -w @qvanta/types/ui build`, `npm -w api typecheck`, `npm -w web build` all exit 0 | ✅ |
 #   Q V A N T A  
+ #   Q V A N T A  
  
