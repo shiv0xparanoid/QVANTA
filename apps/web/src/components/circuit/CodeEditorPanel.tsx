@@ -10,6 +10,8 @@ type SimStatus = 'idle' | 'running' | 'done' | 'error';
 
 export interface CodeEditorPanelProps {
   externalControl: boolean;
+  shotsOverride?: number;
+  onShotsChange?: (shots: number) => void;
   onStatusChange?: (status: SimStatus, error?: string | null) => void;
   onResult?: (r: {
     counts: Record<string, number>;
@@ -28,7 +30,7 @@ interface MonacoMarker {
   endColumn: number;
 }
 
-const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({ externalControl, onStatusChange, onResult }) => {
+const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({ externalControl, shotsOverride, onShotsChange, onStatusChange, onResult }) => {
   const operations = useCircuitStore((s) => s.operations);
   const qubits = useCircuitStore((s) => s.qubits);
   const timesteps = useCircuitStore((s) => s.timesteps);
@@ -38,27 +40,46 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({ externalControl, onSt
 
   const editorRef = React.useRef<any>(null);
   const monacoRef = React.useRef<any>(null);
+  const userEditingRef = React.useRef<number>(0);
+  const lastSyncedGeneratedRef = React.useRef<string>('');
 
   const [code, setCode] = React.useState<string>(() =>
     circuitToQiskitCode({ qubits, timesteps, operations })
   );
-  const [shots, setShots] = React.useState(1024);
+  const [shotsInternal, setShotsInternal] = React.useState(1024);
+  const shots = shotsOverride ?? shotsInternal;
+  const setShots = (v: number) => {
+    setShotsInternal(v);
+    onShotsChange?.(v);
+  };
   const [status, setStatus] = React.useState<SimStatus>('idle');
   const [err, setErr] = React.useState<string | null>(null);
 
-  // one-way sync: circuit AST → code, only when there's a diff in normalized form
+  const markUserEditing = () => {
+    userEditingRef.current = Date.now();
+  };
+
   React.useEffect(() => {
     const generated = circuitToQiskitCode({ qubits, timesteps, operations });
+    if (generated === lastSyncedGeneratedRef.current) return;
+
+    const now = Date.now();
+    const editingRecently = now - userEditingRef.current < 1500;
+    if (editingRecently) return;
+
     const current = editorRef.current?.getValue?.() ?? code;
-    const g = generated.replace(/\s+/g, ' ').trim();
-    const c = current.replace(/\s+/g, ' ').trim();
-    if (g !== c) {
+    const gNorm = generated.replace(/\s+/g, ' ').trim();
+    const cNorm = current.replace(/\s+/g, ' ').trim();
+    if (gNorm !== cNorm) {
+      lastSyncedGeneratedRef.current = generated;
       setCode(generated);
       if (editorRef.current?.setValue) {
         editorRef.current.setValue(generated);
       }
+    } else {
+      lastSyncedGeneratedRef.current = generated;
     }
-  }, [qubits, timesteps, operations, code]);
+  }, [qubits, timesteps, operations]);
 
   const pushStatus = (s: SimStatus, e: string | null = null) => {
     setStatus(s);
@@ -226,12 +247,13 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({ externalControl, onSt
           height="100%"
           defaultLanguage="python"
           theme="vs-dark"
-          value={code}
+          defaultValue={code}
           path="circuit.py"
           onMount={(editor, monaco) => {
             editorRef.current = editor;
             monacoRef.current = monaco;
             editor.onDidChangeModelContent(() => {
+              markUserEditing();
               setCode(editor.getValue());
             });
             editor.onDidBlurEditorText(() => {

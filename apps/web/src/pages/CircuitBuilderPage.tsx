@@ -31,6 +31,7 @@ const CircuitBuilderPage: React.FC = () => {
     backend: string;
     blochVectors?: Array<{ x: number; y: number; z: number }>;
   } | null>(null);
+  const [shots, setShots] = React.useState(1024);
 
   React.useEffect(() => {
     return () => {
@@ -105,6 +106,8 @@ const CircuitBuilderPage: React.FC = () => {
             )}
             <CodeEditorPanel
               externalControl={false}
+              shotsOverride={shots}
+              onShotsChange={setShots}
               onStatusChange={(st, err) => {
                 setSimStatus(st === 'running' ? 'loading' : st as any);
                 setSimError(err ?? null);
@@ -120,6 +123,8 @@ const CircuitBuilderPage: React.FC = () => {
           {tab === 'editor' ? (
             <CodeEditorPanel
               externalControl
+              shotsOverride={shots}
+              onShotsChange={setShots}
               onStatusChange={(st, err) => {
                 setSimStatus(st === 'running' ? 'loading' : st as any);
                 setSimError(err ?? null);

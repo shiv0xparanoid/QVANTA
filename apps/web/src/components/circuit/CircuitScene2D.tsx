@@ -40,6 +40,18 @@ const CircuitScene2D: React.FC = () => {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        active?.isContentEditable ||
+        active?.closest('.monaco-editor')
+      ) {
+        return;
+      }
+
       const st = useCircuitStore.getState();
       let c = { ...st.cursor };
       let handled = true;
