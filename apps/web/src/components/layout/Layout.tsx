@@ -4,6 +4,7 @@ import { Button } from '@qvanta/ui';
 import Sidebar from './Sidebar';
 import { useAuthStore } from '@/store/auth';
 import { useUIStore } from '@/store/ui';
+import { apiClient } from '@/lib/api-client';
 
 const IconMenu: React.FC<{ className?: string }> = ({ className }) => (
   <svg
@@ -81,9 +82,13 @@ const TopBar: React.FC = () => {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
+  const handleLogout = async () => {
+    try {
+      await apiClient.post('/auth/logout').catch(() => {});
+    } finally {
+      logout();
+      navigate('/login', { replace: true });
+    }
   };
 
   return (

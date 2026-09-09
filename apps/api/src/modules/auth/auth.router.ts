@@ -8,7 +8,9 @@ import {
   refreshTokens,
   findOrCreateGoogleUser,
   issueTokensForUser,
+  logoutUser,
 } from './auth.service';
+import { JwtAuthGuard, type AuthRequest } from './auth.middleware';
 import { logger } from '../../lib/logger';
 import { AppError } from '../../lib/errors';
 
@@ -127,6 +129,28 @@ authRouter.post('/refresh', async (req, res, next) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     res.status(200).json(tokens);
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/logout', JwtAuthGuard, async (req, res, next) => {
+  try {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user?.id;
+    const cookieToken = req.cookies?.refreshToken as string | undefined;
+    const bodyToken = (req.body as { refreshToken?: string } | undefined)?.refreshToken;
+
+    if (userId) {
+      await logoutUser(userId, cookieToken ?? bodyToken);
+    }
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+    res.status(200).json({ success: true });
   } catch (err) {
     next(err);
   }

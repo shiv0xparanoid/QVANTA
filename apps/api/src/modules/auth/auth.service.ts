@@ -209,6 +209,19 @@ async function saveRefreshToken(userId: string, token: string): Promise<void> {
   });
 }
 
+export async function logoutUser(userId: string, refreshToken?: string): Promise<void> {
+  if (refreshToken) {
+    const tokenHash = hashToken(refreshToken);
+    await prisma.refreshToken.deleteMany({
+      where: { userId, tokenHash },
+    }).catch(() => {});
+  }
+
+  await prisma.refreshToken.deleteMany({
+    where: { userId, expiresAt: { lt: new Date() } },
+  }).catch(() => {});
+}
+
 export function toJwtPayload(user: {
   id: string;
   email: string;

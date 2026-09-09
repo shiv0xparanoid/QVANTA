@@ -19,13 +19,16 @@ const USER_KEY = 'qvanta_user';
 const TOKEN_KEY = 'qvanta_token';
 const REFRESH_KEY = 'qvanta_refresh_token';
 
+const DEV_OVERRIDE_KEY = 'qvanta_dev_override';
+
 const loadInitialState = (): Partial<AuthState> => {
   try {
     const accessToken = localStorage.getItem(TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_KEY);
     const userStr = localStorage.getItem(USER_KEY);
+    const devOverride = localStorage.getItem(DEV_OVERRIDE_KEY) === '1';
 
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    if (devOverride && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       const mockUser: User = {
         id: 'dev-local',
         email: 'dev@qvanta.ai',

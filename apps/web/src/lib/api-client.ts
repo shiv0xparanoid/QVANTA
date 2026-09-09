@@ -3,10 +3,29 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 const ACCESS_TOKEN_KEY = 'qvanta_token';
 const REFRESH_TOKEN_KEY = 'qvanta_refresh_token';
 
+const PUBLIC_ROUTES = ['/login', '/register', '/auth/google/callback'];
+
+let _redirectInProgress = false;
+
+const isOnPublicRoute = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  const path = window.location.pathname;
+  return PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/'));
+};
+
 const clearAuthStorage = () => {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem('qvanta_user');
+};
+
+const redirectToLogin = () => {
+  if (typeof window === 'undefined' || _redirectInProgress) return;
+  if (isOnPublicRoute()) return;
+  _redirectInProgress = true;
+  clearAuthStorage();
+  const current = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/login?redirect=${current}`;
 };
 
 const getAccessToken = (): string | null => {
@@ -28,6 +47,7 @@ const setRefreshToken = (token: string) => {
 export const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -50,7 +70,8 @@ const refreshAccessToken = async (): Promise<string> => {
         '/api/auth/refresh',
         payload,
         {
-          baseURL: ''
+          baseURL: '',
+          withCredentials: true,
         }
       );
 
@@ -62,9 +83,7 @@ const refreshAccessToken = async (): Promise<string> => {
       return accessToken;
     } catch (err) {
       clearAuthStorage();
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+      redirectToLogin();
       throw err;
     } finally {
       isRefreshing = false;
@@ -103,10 +122,7 @@ apiClient.interceptors.response.use(
         }
         return apiClient(originalRequest);
       } catch (refreshErr) {
-        clearAuthStorage();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
+        redirectToLogin();
         return Promise.reject(refreshErr);
       }
     }

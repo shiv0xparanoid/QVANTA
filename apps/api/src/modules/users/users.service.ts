@@ -18,8 +18,6 @@ export async function getCurrentUser(userId: string): Promise<User> {
   return {
     id: user.id,
     email: user.email,
-    googleId: user.googleId ?? undefined,
-    passwordHash: user.passwordHash ?? undefined,
     role: user.role,
     tier: user.tier,
     usageMonth: user.usageMonth,
@@ -52,8 +50,6 @@ export async function updateUser(userId: string, input: UpdateUserInput): Promis
   return {
     id: user.id,
     email: user.email,
-    googleId: user.googleId ?? undefined,
-    passwordHash: user.passwordHash ?? undefined,
     role: user.role,
     tier: user.tier,
     usageMonth: user.usageMonth,
