@@ -77,14 +77,21 @@ const AvatarRig: React.FC<AvatarRigProps> = ({ preset, viseme, blinking }) => {
   React.useEffect(() => {
     const m = mouthRef.current;
     if (!m) return;
+    const count = (mouthGeo.morphAttributes?.position?.length) ?? 3;
+    if (!m.morphTargetInfluences || m.morphTargetInfluences.length < count) {
+      m.morphTargetInfluences = new Array(count).fill(0);
+    }
     const closed = 1 - viseme * 0.2;
     const a = viseme * 0.8;
     const o = viseme * 0.35 * (1 - viseme);
     // morph target order: [closed, A, O]
-    m.morphTargetInfluences![0] = Math.max(0, closed);
-    m.morphTargetInfluences![1] = Math.max(0, a);
-    m.morphTargetInfluences![2] = Math.max(0, o);
-  }, [viseme]);
+    m.morphTargetInfluences[0] = Math.max(0, Math.min(1, closed));
+    m.morphTargetInfluences[1] = Math.max(0, Math.min(1, a));
+    if (count >= 3) {
+      m.morphTargetInfluences[2] = Math.max(0, Math.min(1, o));
+    }
+    m.updateMorphTargets?.();
+  }, [viseme, mouthGeo]);
 
   const eyeScaleY = blinking ? 0.08 : 1;
 

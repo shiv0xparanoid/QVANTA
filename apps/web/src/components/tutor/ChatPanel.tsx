@@ -31,17 +31,23 @@ const ChatPanel: React.FC = () => {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await apiClient.get<Conversation[]>('/tutor/conversations');
+        const res = await apiClient.get<{ data: Conversation[]; total?: number }>('/tutor/conversations');
         if (cancelled || !res.data) return;
-        const ts: Thread[] = res.data.map((c) => ({
+        const convArr: Conversation[] = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray((res.data as any).data)
+            ? (res.data as any).data
+            : [];
+        const ts: Thread[] = convArr.map((c) => ({
           id: c.id,
           title: c.title,
           messages: Array.isArray(c.messages) ? c.messages : []
         }));
         setThreads(ts);
-        if (ts.length > 0 && !threads.find(t => t.id === activeId)) {
-          setActiveId(ts[0].id);
-        }
+        setActiveId((prevActive) => {
+          if (prevActive !== NEW_CONV_ID) return prevActive;
+          return ts.length > 0 ? ts[0].id : NEW_CONV_ID;
+        });
       } catch {
         // ignore for MVP — fall back to purely client-side thread
       }
@@ -106,30 +112,60 @@ const ChatPanel: React.FC = () => {
 
     try {
       const payload: any = {
-        message: trimmed,
-        conversationId: workingId === NEW_CONV_ID || workingId.startsWith('c_') ? undefined : workingId,
+        prompt: trimmed,
+        conversationId: activeId === NEW_CONV_ID || workingId.startsWith('c_') ? undefined : workingId,
       };
       if (attachCircuit) payload.circuit = circuitContext;
 
       const res = await apiClient.post<{
-        reply: string;
-        conversationId?: string;
-        ragContext?: string[];
-        message?: TutorMessage;
+        conversation: Conversation;
+        reply: TutorMessage;
       }>('/tutor/chat', payload, { timeout: 90000 });
 
-      const replyText = res.data?.reply ?? (res.data as any)?.message?.content ?? 'Sorry, I could not formulate a response right now.';
+      const chatResp = res.data;
+      const replyMessage: TutorMessage | undefined =
+        chatResp.reply && typeof chatResp.reply === 'object' && 'content' in chatResp.reply
+          ? chatResp.reply
+          : undefined;
 
-      const assistantMsg: TutorMessage = {
-        id: res.data?.message?.id ?? `a_${Date.now()}`,
-        conversationId: res.data?.conversationId ?? workingId,
+      const finalWorkingId = chatResp.conversation?.id ?? workingId;
+      if (finalWorkingId !== workingId) {
+        setActiveId(finalWorkingId);
+      }
+
+      if (chatResp.conversation) {
+        setThreads((prev) => {
+          const found = prev.find((t) => t.id === finalWorkingId);
+          const conv: Thread = found
+            ? { ...found, id: finalWorkingId, title: chatResp.conversation.title ?? found.title, messages: Array.isArray(chatResp.conversation.messages) ? chatResp.conversation.messages : found.messages }
+            : {
+                id: finalWorkingId,
+                title: chatResp.conversation.title ?? trimmed.slice(0, 40),
+                messages: Array.isArray(chatResp.conversation.messages) ? chatResp.conversation.messages : []
+              };
+          const exists = prev.some((t) => t.id === finalWorkingId);
+          const cleaned = prev.filter((t) => t.id !== workingId && t.id !== finalWorkingId);
+          return exists ? cleaned.map((t) => (t.id === finalWorkingId ? conv : t)) : [conv, ...cleaned];
+        });
+      }
+
+      const replyText =
+        replyMessage?.content ??
+        (typeof chatResp.reply === 'string' ? chatResp.reply : undefined) ??
+        'Sorry, I could not formulate a response right now.';
+
+      const assistantMsg: TutorMessage = replyMessage ?? {
+        id: `a_${Date.now()}`,
+        conversationId: finalWorkingId,
         role: 'assistant',
         content: replyText,
-        ragContext: res.data?.ragContext,
-        circuitContext,
         createdAt: new Date().toISOString()
       };
-      appendMessages(res.data?.conversationId ?? workingId, [assistantMsg]);
+
+      if (!chatResp.conversation) {
+        appendMessages(finalWorkingId, [assistantMsg]);
+      }
+
       synthesizeIfPossible(replyText, user?.avatarPreset ?? 0);
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message ?? 'Network error while reaching the tutor.';
