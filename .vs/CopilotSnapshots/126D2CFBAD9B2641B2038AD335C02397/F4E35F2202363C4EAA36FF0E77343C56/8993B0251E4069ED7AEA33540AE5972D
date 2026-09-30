@@ -1,0 +1,37 @@
+﻿import React from 'react';
+
+/**
+ * Hook to lock/unlock scroll behavior
+ * Prevents wheel and touch events when isLocked is true
+ */
+export const useScrollLock = (isLocked: boolean) => {
+  React.useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (isLocked) {
+        e.preventDefault();
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isLocked) {
+        e.preventDefault();
+      }
+    };
+
+    if (isLocked) {
+      document.body.style.overflow = 'hidden';
+      document.addEventListener('wheel', handleWheel, { passive: false });
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    } else {
+      document.body.style.overflow = '';
+      document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('touchmove', handleTouchMove);
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [isLocked]);
+};

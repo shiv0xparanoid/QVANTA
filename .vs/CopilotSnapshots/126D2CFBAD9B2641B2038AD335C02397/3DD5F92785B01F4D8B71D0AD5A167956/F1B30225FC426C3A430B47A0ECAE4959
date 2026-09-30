@@ -1,0 +1,120 @@
+﻿import React from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+
+interface ButterflyEffectProps {
+  reduced: boolean;
+}
+
+const ButterflyEffect: React.FC<ButterflyEffectProps> = ({ reduced }) => {
+  const groupRef = React.useRef<THREE.Group>(null);
+  const wingLeftRef = React.useRef<THREE.Mesh>(null);
+  const wingRightRef = React.useRef<THREE.Mesh>(null);
+  const bodyRef = React.useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+	if (!groupRef.current) return;
+
+	const t = reduced ? 0 : clock.elapsedTime;
+
+	// Wing flapping animation
+	const wingFlap = Math.sin(t * 4) * 0.6;
+	const bodyBounce = Math.cos(t * 4) * 0.08;
+
+	if (wingLeftRef.current) {
+	  wingLeftRef.current.rotation.z = -wingFlap;
+	}
+	if (wingRightRef.current) {
+	  wingRightRef.current.rotation.z = wingFlap;
+	}
+
+	// Gentle body movement
+	if (bodyRef.current) {
+	  bodyRef.current.position.y = bodyBounce;
+	}
+
+	// Subtle rotation
+	groupRef.current.rotation.y += 0.015 * (reduced ? 0 : 1);
+  });
+
+  return (
+	<group ref={groupRef}>
+	  {/* Left Wing - Violet */}
+	  <mesh ref={wingLeftRef} position={[-0.35, 0, 0]}>
+		<planeGeometry args={[0.6, 0.8]} />
+		<meshStandardMaterial
+		  color="#8b6bff"
+		  emissive="#8b6bff"
+		  emissiveIntensity={0.4}
+		  transparent
+		  opacity={0.85}
+		  metalness={0.2}
+		  roughness={0.4}
+		  side={THREE.DoubleSide}
+		/>
+	  </mesh>
+
+	  {/* Right Wing - Cyan */}
+	  <mesh ref={wingRightRef} position={[0.35, 0, 0]}>
+		<planeGeometry args={[0.6, 0.8]} />
+		<meshStandardMaterial
+		  color="#34e0ff"
+		  emissive="#34e0ff"
+		  emissiveIntensity={0.3}
+		  transparent
+		  opacity={0.85}
+		  metalness={0.2}
+		  roughness={0.4}
+		  side={THREE.DoubleSide}
+		/>
+	  </mesh>
+
+	  {/* Wing Details - Subtle glow */}
+	  <mesh position={[-0.35, 0.3, 0.05]} scale={[0.4, 0.4, 1]}>
+		<sphereGeometry args={[0.15, 16, 16]} />
+		<meshBasicMaterial
+		  color="#8b6bff"
+		  transparent
+		  opacity={0.3}
+		  depthWrite={false}
+		/>
+	  </mesh>
+
+	  <mesh position={[0.35, 0.3, 0.05]} scale={[0.4, 0.4, 1]}>
+		<sphereGeometry args={[0.15, 16, 16]} />
+		<meshBasicMaterial
+		  color="#34e0ff"
+		  transparent
+		  opacity={0.3}
+		  depthWrite={false}
+		/>
+	  </mesh>
+
+	  {/* Body */}
+	  <mesh ref={bodyRef} position={[0, 0, 0.15]}>
+		<cylinderGeometry args={[0.08, 0.08, 0.35, 8]} />
+		<meshStandardMaterial
+		  color="#13102a"
+		  emissive="#8b6bff"
+		  emissiveIntensity={0.6}
+		  metalness={0.3}
+		  roughness={0.5}
+		/>
+	  </mesh>
+
+	  {/* Head */}
+	  <mesh position={[0, 0.2, 0.15]}>
+		<sphereGeometry args={[0.1, 16, 16]} />
+		<meshStandardMaterial
+		  color="#8b6bff"
+		  emissive="#8b6bff"
+		  emissiveIntensity={0.8}
+		  metalness={0.4}
+		  roughness={0.3}
+		/>
+	  </mesh>
+	</group>
+  );
+};
+
+export default ButterflyEffect;

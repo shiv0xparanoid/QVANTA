@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import Layout from '@/components/layout/Layout';
 
+const LandingPage = lazy(() => import('@/pages/Landing'));
+const HomepagePage = lazy(() => import('@/pages/Homepage'));
 const LoginPage = lazy(() => import('@/pages/Login'));
 const RegisterPage = lazy(() => import('@/pages/Register'));
 const AuthGoogleCallbackPage = lazy(() => import('@/pages/AuthGoogleCallback'));
@@ -13,9 +15,9 @@ const BillingPage = lazy(() => import('@/pages/Billing'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 
 const LoadingFallback: React.FC = () => (
-  <div className="flex min-h-screen items-center justify-center bg-bg-950 text-text-400">
+  <div className="flex min-h-screen items-center justify-center bg-bg-1 text-ink-dim">
     <div className="flex flex-col items-center gap-3">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-bg-700 border-t-primary-500" />
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-bg-800 border-t-violet" />
       <span className="text-sm">Loading...</span>
     </div>
   </div>
@@ -39,6 +41,8 @@ const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/home" element={<HomepagePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/google/callback" element={<AuthGoogleCallbackPage />} />
@@ -55,8 +59,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

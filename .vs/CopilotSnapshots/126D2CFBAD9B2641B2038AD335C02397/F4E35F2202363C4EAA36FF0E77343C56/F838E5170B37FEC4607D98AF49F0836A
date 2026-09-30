@@ -1,0 +1,301 @@
+﻿import React from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { usePrefersReducedMotion } from '@/hooks';
+
+interface ButterflyParticlesProps {
+  progress?: number; // 0-1, allows external control of assembly progress
+  particleCount?: number; // default 3200
+  scale?: number; // default 0.62
+  showGlyphs?: boolean; // default true
+}
+
+/**
+ * ButterflyParticles - Reusable butterfly effect component
+ * 
+ * Temple Fay's transcendental butterfly curve animated with particle assembly.
+ * Demonstrates: sensitivity to initial conditions, chaotic systems, mathematical beauty.
+ * 
+ * x(t) = sin(t) * ( e^cos(t) - 2cos(4t) - sin^5(t/12) )
+ * y(t) = cos(t) * (same)
+ * t in [0, 12π]
+ */
+export const ButterflyParticles: React.FC<ButterflyParticlesProps> = ({
+  progress = 1,
+  particleCount = 3200,
+  scale = 0.62,
+  showGlyphs = true,
+}) => {
+  const groupRef = React.useRef<THREE.Group>(null);
+  const pointsRef = React.useRef<THREE.Points>(null);
+  const glitchPointsRef = React.useRef<THREE.Points>(null);
+  const glyphSpritesRef = React.useRef<THREE.Sprite[]>([]);
+  const posArrayRef = React.useRef<Float32Array | null>(null);
+  const scatterPosRef = React.useRef<Float32Array | null>(null);
+  const targetPosRef = React.useRef<Float32Array | null>(null);
+  const delayArrRef = React.useRef<Float32Array | null>(null);
+  const glitchIdxRef = React.useRef<number[]>([]);
+  const glitchArrRef = React.useRef<Float32Array | null>(null);
+  const reduced = usePrefersReducedMotion();
+
+  // Initialize geometry and particles
+  React.useMemo(() => {
+	const COUNT = particleCount;
+	const posArray = new Float32Array(COUNT * 3);
+	const scatterPos = new Float32Array(COUNT * 3);
+	const targetPos = new Float32Array(COUNT * 3);
+	const colorArray = new Float32Array(COUNT * 3);
+	const delayArr = new Float32Array(COUNT);
+
+	const violet = new THREE.Color(0x8b6bff);
+	const cyan = new THREE.Color(0x34e0ff);
+
+	// Temple Fay Butterfly Curve
+	for (let i = 0; i < COUNT; i++) {
+	  const t = (i / COUNT) * Math.PI * 12;
+	  const r =
+		Math.exp(Math.sin(t)) -
+		2 * Math.cos(4 * t) -
+		Math.pow(Math.sin(t / 12), 5);
+	  const bx = Math.sin(t) * r * scale;
+	  const by = Math.cos(t) * r * scale;
+
+	  // Volumetric jitter
+	  const jx = (Math.random() - 0.5) * 0.22;
+	  const jy = (Math.random() - 0.5) * 0.22;
+	  const jz = (Math.random() - 0.5) * 0.55;
+
+	  targetPos[i * 3] = bx + jx;
+	  targetPos[i * 3 + 1] = by + jy - 0.3;
+	  targetPos[i * 3 + 2] = jz;
+
+	  // Scatter positions (chaotic starting point)
+	  const sr = 3.2 + Math.random() * 4.5;
+	  const sphi = Math.random() * Math.PI;
+	  const stheta = Math.random() * Math.PI * 2;
+	  scatterPos[i * 3] = sr * Math.sin(sphi) * Math.cos(stheta);
+	  scatterPos[i * 3 + 1] = sr * Math.sin(sphi) * Math.sin(stheta);
+	  scatterPos[i * 3 + 2] = sr * Math.cos(sphi);
+
+	  posArray[i * 3] = scatterPos[i * 3];
+	  posArray[i * 3 + 1] = scatterPos[i * 3 + 1];
+	  posArray[i * 3 + 2] = scatterPos[i * 3 + 2];
+
+	  const c = violet.clone().lerp(cyan, Math.abs(Math.sin(t * 0.5)));
+	  colorArray[i * 3] = c.r;
+	  colorArray[i * 3 + 1] = c.g;
+	  colorArray[i * 3 + 2] = c.b;
+
+	  delayArr[i] = Math.random() * 0.55;
+	}
+
+	posArrayRef.current = posArray;
+	scatterPosRef.current = scatterPos;
+	targetPosRef.current = targetPos;
+	delayArrRef.current = delayArr;
+
+	// Glitch layer
+	const GLITCH_COUNT = 260;
+	const glitchIdx: number[] = [];
+	for (let i = 0; i < GLITCH_COUNT; i++) {
+	  glitchIdx.push(Math.floor(Math.random() * COUNT));
+	}
+	glitchIdxRef.current = glitchIdx;
+	glitchArrRef.current = new Float32Array(GLITCH_COUNT * 3);
+  }, [particleCount, scale]);
+
+  // Smooth-step helper
+  const smoothstep = React.useCallback((t: number) => {
+	t = Math.min(Math.max(t, 0), 1);
+	return t * t * (3 - 2 * t);
+  }, []);
+
+  // Glyph texture maker
+  const makeGlyphTexture = React.useCallback((str: string) => {
+	const cnv = document.createElement('canvas');
+	cnv.width = 256;
+	cnv.height = 96;
+	const ctx = cnv.getContext('2d');
+	if (!ctx) return new THREE.CanvasTexture(cnv);
+
+	ctx.font = '600 44px "JetBrains Mono", monospace';
+	ctx.fillStyle = 'rgba(238,236,255,0.95)';
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	ctx.shadowColor = 'rgba(139,107,255,0.9)';
+	ctx.shadowBlur = 18;
+	ctx.fillText(str, 128, 48);
+	return new THREE.CanvasTexture(cnv);
+  }, []);
+
+  useFrame(({ clock }) => {
+	if (
+	  !groupRef.current ||
+	  !pointsRef.current ||
+	  !posArrayRef.current ||
+	  !scatterPosRef.current ||
+	  !targetPosRef.current ||
+	  !delayArrRef.current
+	) {
+	  return;
+	}
+
+	const t = reduced ? 0 : clock.elapsedTime;
+	const COUNT = particleCount;
+	const smoothProgress = progress;
+
+	// Flight pattern
+	groupRef.current.position.x = Math.sin(t * 0.18) * 0.5;
+	groupRef.current.position.y = Math.sin(t * 0.27) * 0.22;
+	groupRef.current.rotation.z = Math.sin(t * 0.15) * 0.06;
+	const wingbeat = 1 + Math.sin(t * 1.6) * 0.045 * smoothProgress;
+	groupRef.current.scale.set(wingbeat, 1, 1);
+
+	// Update particle positions
+	for (let i = 0; i < COUNT; i++) {
+	  const ix = i * 3;
+	  const iy = i * 3 + 1;
+	  const iz = i * 3 + 2;
+
+	  const localT = smoothstep((smoothProgress - delayArrRef.current[i]) / 0.45);
+	  const wob = Math.sin(t * 0.8 + i) * 0.025 * (1 - localT * 0.6);
+
+	  posArrayRef.current[ix] =
+		THREE.MathUtils.lerp(scatterPosRef.current[ix], targetPosRef.current[ix], localT) + wob;
+	  posArrayRef.current[iy] =
+		THREE.MathUtils.lerp(scatterPosRef.current[iy], targetPosRef.current[iy], localT) +
+		wob * 0.6;
+	  posArrayRef.current[iz] =
+		THREE.MathUtils.lerp(scatterPosRef.current[iz], targetPosRef.current[iz], localT) + wob;
+	}
+
+	(pointsRef.current.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+	(pointsRef.current.material as THREE.PointsMaterial).opacity = 0.5 + smoothProgress * 0.4;
+
+	// Glitch flicker
+	if (glitchPointsRef.current && glitchArrRef.current) {
+	  if (Math.random() < 0.6) {
+		for (let g = 0; g < glitchIdxRef.current.length; g++) {
+		  const src = glitchIdxRef.current[g];
+		  glitchArrRef.current[g * 3] =
+			posArrayRef.current[src * 3] + (Math.random() - 0.5) * 0.35;
+		  glitchArrRef.current[g * 3 + 1] =
+			posArrayRef.current[src * 3 + 1] + (Math.random() - 0.5) * 0.35;
+		  glitchArrRef.current[g * 3 + 2] =
+			posArrayRef.current[src * 3 + 2] + (Math.random() - 0.5) * 0.35;
+		}
+		(glitchPointsRef.current.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+	  }
+	  const glitchMat = glitchPointsRef.current.material as THREE.PointsMaterial;
+	  glitchMat.opacity =
+		(Math.random() < 0.12 ? Math.random() * 0.7 : glitchMat.opacity * 0.85) *
+		smoothProgress;
+	  glitchMat.color.setHex(Math.random() < 0.5 ? 0x34e0ff : 0x8b6bff);
+	}
+
+	// Equation glyphs
+	glyphSpritesRef.current.forEach((spr) => {
+	  const i = spr.userData.particleIndex;
+	  const localT = smoothstep((smoothProgress - delayArrRef.current[i]) / 0.45);
+	  spr.material.opacity +=
+		(localT * 0.85 - spr.material.opacity) * 0.08;
+	  const fx = Math.sin(t * 0.5 + spr.userData.floatSeed) * 0.08;
+	  const fy = Math.cos(t * 0.4 + spr.userData.floatSeed) * 0.08;
+	  spr.position.set(
+		posArrayRef.current[i * 3] + fx,
+		posArrayRef.current[i * 3 + 1] + fy,
+		posArrayRef.current[i * 3 + 2] + 0.15
+	  );
+	});
+  });
+
+  // Build scene
+  const posArray = posArrayRef.current;
+  const glitchArr = glitchArrRef.current;
+
+  if (!posArray || !glitchArr) return null;
+
+  const GLYPHS = [
+	'|ψ⟩',
+	'ħ',
+	'∑',
+	'∫',
+	'Δφ',
+	'e^{iθ}',
+	'⊗',
+	'√2',
+	'π',
+	'∇',
+	'U(θ)',
+	'|0⟩',
+	'|1⟩',
+	'α²+β²=1',
+  ];
+
+  const GLYPH_SAMPLE_COUNT = 22;
+  const glyphSprites: THREE.Sprite[] = [];
+
+  for (let g = 0; g < GLYPH_SAMPLE_COUNT; g++) {
+	const i = Math.floor((g / GLYPH_SAMPLE_COUNT) * particleCount);
+	const tex = makeGlyphTexture(GLYPHS[g % GLYPHS.length]);
+	const mat = new THREE.SpriteMaterial({
+	  map: tex,
+	  transparent: true,
+	  opacity: 0,
+	  blending: THREE.AdditiveBlending,
+	  depthWrite: false,
+	});
+	const spr = new THREE.Sprite(mat);
+	spr.scale.set(0.9, 0.34, 1);
+	spr.userData.particleIndex = i;
+	spr.userData.floatSeed = Math.random() * Math.PI * 2;
+	glyphSprites.push(spr);
+  }
+  glyphSpritesRef.current = glyphSprites;
+
+  return (
+	<group ref={groupRef}>
+	  {/* Main particle layer */}
+	  <points ref={pointsRef}>
+		<bufferGeometry>
+		  <bufferAttribute attach="attributes-position" args={[posArray, 3]} />
+		</bufferGeometry>
+		<pointsMaterial
+		  size={0.045}
+		  transparent
+		  opacity={0.9}
+		  blending={THREE.AdditiveBlending}
+		  depthWrite={false}
+		  color={0x8b6bff}
+		  sizeAttenuation
+		/>
+	  </points>
+
+	  {/* Glitch layer */}
+	  {glitchArr && (
+		<points ref={glitchPointsRef}>
+		  <bufferGeometry>
+			<bufferAttribute attach="attributes-position" args={[glitchArr, 3]} />
+		  </bufferGeometry>
+		  <pointsMaterial
+			size={0.09}
+			transparent
+			opacity={0}
+			color={0x34e0ff}
+			blending={THREE.AdditiveBlending}
+			depthWrite={false}
+			sizeAttenuation
+		  />
+		</points>
+	  )}
+
+	  {/* Glyphs */}
+	  {showGlyphs &&
+		glyphSprites.map((spr, idx) => (
+		  <primitive key={idx} object={spr} dispose={null} />
+		))}
+	</group>
+  );
+};
+
+export default ButterflyParticles;

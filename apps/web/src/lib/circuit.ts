@@ -119,17 +119,17 @@ export function parseQiskitCode(code: string, current: Circuit): Circuit {
   const operations: GateOp[] = [];
   let qubits = current.qubits;
 
-  for (const line of lines) {
-    const normalized = line.trim();
-    if (!normalized) continue;
+  for (const rawLine of lines) {
+    const commentStripped = rawLine.replace(/#.*$/, '').trim();
+    if (!commentStripped) continue;
 
-    const initMatch = normalized.match(/QuantumCircuit\((\d+)(?:,\s*(\d+))?\)/);
+    const initMatch = commentStripped.match(/QuantumCircuit\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)/);
     if (initMatch) {
       qubits = Number(initMatch[1]);
       continue;
     }
 
-    const single = normalized.match(/^qc\.(h|x|y|z)\((\d+)\)$/i);
+    const single = commentStripped.match(/qc\s*\.\s*(h|x|y|z)\s*\(\s*(\d+)\s*\)/i);
     if (single) {
       operations.push({
         gate: single[1].toUpperCase() as Gate,
@@ -139,18 +139,18 @@ export function parseQiskitCode(code: string, current: Circuit): Circuit {
       continue;
     }
 
-    const cnot = normalized.match(/^qc\.cx\((\d+),\s*(\d+)\)$/i);
+    const cnot = commentStripped.match(/qc\s*\.\s*(cx|cnot)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/i);
     if (cnot) {
       operations.push({
         gate: 'CNOT',
-        qubit: Number(cnot[1]),
-        target: Number(cnot[2]),
+        qubit: Number(cnot[2]),
+        target: Number(cnot[3]),
         timestep: operations.length,
       });
       continue;
     }
 
-    const measure = normalized.match(/^qc\.measure\((\d+),\s*(\d+)\)$/i);
+    const measure = commentStripped.match(/qc\s*\.\s*measure\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/i);
     if (measure) {
       operations.push({
         gate: 'Measure',

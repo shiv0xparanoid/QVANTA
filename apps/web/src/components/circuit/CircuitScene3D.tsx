@@ -3,6 +3,7 @@ import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useCircuitStore, GATE_PALETTE } from '@/store/circuit';
+import { upsertOperation, circuitToQasmLike } from '@/lib/circuit';
 import type { Gate, GateOp } from '@qvanta/types';
 
 const QUBIT_SPACING = 1.6;
@@ -229,7 +230,6 @@ const DroppableFloor: React.FC<DroppableFloorProps> = ({ onDrop }) => {
       const op: GateOp = { gate, qubit: cell.qubit, timestep: cell.timestep };
       if (gate === 'CNOT') op.target = (cell.qubit + 1) % qubits;
       const state = useCircuitStore.getState();
-      const { upsertOperation } = require('@/lib/circuit');
       const next = upsertOperation(state.operations, op);
       useCircuitStore.setState({ operations: next });
     }
@@ -290,7 +290,6 @@ const CircuitScene3D: React.FC = () => {
     const op: GateOp = { gate, qubit, timestep };
     if (gate === 'CNOT') op.target = (qubit + 1) % qubits;
     const state = useCircuitStore.getState();
-    const { upsertOperation } = require('@/lib/circuit');
     const next = upsertOperation(state.operations, op);
     useCircuitStore.setState({ operations: next });
   };
@@ -327,7 +326,6 @@ const CircuitScene3D: React.FC = () => {
   React.useEffect(() => {
     const toQasm = () => {
       const s = useCircuitStore.getState();
-      const { circuitToQasmLike } = require('@/lib/circuit');
       return circuitToQasmLike({ qubits: s.qubits, timesteps: s.timesteps, operations: s.operations });
     };
     const w = window as any;

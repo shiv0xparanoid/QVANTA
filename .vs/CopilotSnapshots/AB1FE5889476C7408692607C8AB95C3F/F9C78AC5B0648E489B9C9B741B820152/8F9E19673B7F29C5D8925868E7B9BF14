@@ -1,0 +1,101 @@
+﻿export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+export function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+export function clamp(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const SHAPE_TILT_X = 0.55;
+const SHAPE_TILT_Z = 0.38;
+const sinTX = Math.sin(SHAPE_TILT_X);
+const cosTX = Math.cos(SHAPE_TILT_X);
+const sinTZ = Math.sin(SHAPE_TILT_Z);
+const cosTZ = Math.cos(SHAPE_TILT_Z);
+
+export function generateTorusTargetPosition(
+  u: number,
+  v: number,
+  out: Float32Array,
+  outIdx: number,
+  baseMaj = 2.6,
+  baseTube = 0.55,
+  foldAmp = 0.45
+): void {
+  const twoPiU = u * Math.PI * 2;
+  const twoPiV = v * Math.PI * 2;
+
+  const Rmaj =
+    baseMaj +
+    Math.sin(twoPiU) * 0.32 +
+    Math.sin(2 * twoPiU) * 0.18 +
+    Math.cos(3 * twoPiU) * 0.12;
+
+  const Rtube =
+    baseTube +
+    Math.sin(2 * twoPiU + twoPiV * 4) * 0.12 +
+    Math.cos(4 * twoPiU) * 0.06;
+
+  const fold = foldAmp * Math.sin(4 * twoPiU + 2 * twoPiV);
+
+  const cosU = Math.cos(twoPiU);
+  const sinU = Math.sin(twoPiU);
+  const cosV = Math.cos(twoPiV);
+  const sinV = Math.sin(twoPiV);
+
+  let x = (Rmaj + Rtube * cosV) * cosU;
+  let y = Rtube * sinV + fold;
+  let z = (Rmaj + Rtube * cosV) * sinU;
+
+  const x1 = x;
+  const y1 = y * cosTX - z * sinTX;
+  const z1 = y * sinTX + z * cosTX;
+
+  const x2 = x1 * cosTZ - y1 * sinTZ;
+  const y2 = x1 * sinTZ + y1 * cosTZ;
+  const z2 = z1;
+
+  out[outIdx + 0] = x2;
+  out[outIdx + 1] = y2;
+  out[outIdx + 2] = z2;
+}
+
+export function generateScatterPosition(
+  i: number,
+  seed: number,
+  out: Float32Array,
+  outIdx: number,
+  extent: number
+): void {
+  const rand = mulberry32(seed + i * 131);
+  const r = extent * (0.4 + rand() * 0.8);
+  const theta = Math.acos(2 * rand() - 1);
+  const phi = 2 * Math.PI * rand();
+  const x = r * Math.sin(theta) * Math.cos(phi);
+  const y = r * Math.sin(theta) * Math.sin(phi) * 0.9;
+  const z = r * Math.cos(theta);
+  out[outIdx + 0] = x;
+  out[outIdx + 1] = y;
+  out[outIdx + 2] = z;
+}
+
+export function generatePerParticleDelay(i: number, seed: number): number {
+  const rand = mulberry32(seed + 777 + i * 97);
+  return 0.0 + rand() * 0.55;
+}

@@ -31,8 +31,24 @@ const qvantaPreset: Config = {
           800: "#6b21a8",
           900: "#581c87"
         },
+        violet: {
+          DEFAULT: "#8b6bff",
+          500: "#8b6bff",
+          600: "#7754ff",
+          700: "#633dff"
+        },
+        cyan: {
+          DEFAULT: "#34e0ff",
+          500: "#34e0ff",
+          600: "#14caff",
+          700: "#00b3e6"
+        },
+        ink: "#eeecff",
+        "ink-dim": "#9a96bd",
         bg: {
-          DEFAULT: "#020617",
+          DEFAULT: "#06050f",
+          1: "#06050f",
+          2: "#0a0918",
           50: "#f8fafc",
           100: "#f1f5f9",
           200: "#e2e8f0",
@@ -46,7 +62,7 @@ const qvantaPreset: Config = {
           950: "#020617"
         },
         text: {
-          DEFAULT: "#f1f5f9",
+          DEFAULT: "#eeecff",
           50: "#f8fafc",
           100: "#f1f5f9",
           200: "#e2e8f0",
@@ -60,10 +76,31 @@ const qvantaPreset: Config = {
         }
       },
       backgroundColor: {
-        DEFAULT: "#020617"
+        DEFAULT: "#06050f"
       },
       textColor: {
-        DEFAULT: "#f1f5f9"
+        DEFAULT: "#eeecff"
+      },
+      fontFamily: {
+        display: [
+          "'Space Grotesk'",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif"
+        ],
+        body: [
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif"
+        ],
+        "mono-quantum": [
+          "'JetBrains Mono'",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace"
+        ]
       }
     }
   }

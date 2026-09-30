@@ -26,9 +26,22 @@ function createApp(): Express {
   app.use(helmet());
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+  const allowedOrigins = [
+    webOrigin,
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5176',
+  ].filter(Boolean);
   app.use(
     cors({
-      origin: webOrigin,
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin ${origin} not allowed by CORS`));
+        }
+      },
       credentials: true,
     })
   );

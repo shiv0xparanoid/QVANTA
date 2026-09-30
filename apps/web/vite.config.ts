@@ -16,6 +16,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    headers: process.env.VITE_ENABLE_COOP === '1'
+      ? {
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp'
+        }
+      : undefined,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

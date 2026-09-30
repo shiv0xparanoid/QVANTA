@@ -42,15 +42,11 @@ interface BlochSphereProps {
   vector: { x: number; y: number; z: number };
 }
 
-const AxisLine: React.FC<{ points: [THREE.Vector3, THREE.Vector3]; color?: string }> = ({ points, color = '#334155' }) => {
-  const geoRef = React.useRef<THREE.BufferGeometry | null>(null);
-  React.useMemo(() => {
-    const g = new THREE.BufferGeometry().setFromPoints(points);
-    geoRef.current = g;
-    return g;
+const AxisLine: React.FC<{ points: [THREE.Vector3, THREE.Vector3]; color?: string }> = ({ points }) => {
+  const geometry = React.useMemo(() => {
+    return new THREE.BufferGeometry().setFromPoints(points);
   }, [points]);
-  if (!geoRef.current) return null;
-  return <primitive object={geoRef.current} attach="geometry" />;
+  return <primitive object={geometry} attach="geometry" />;
 };
 
 const BlochSphere: React.FC<BlochSphereProps> = ({ position, vector }) => {

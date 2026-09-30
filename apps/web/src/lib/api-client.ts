@@ -2,6 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const ACCESS_TOKEN_KEY = 'qvanta_token';
 const REFRESH_TOKEN_KEY = 'qvanta_refresh_token';
+const DEV_ACCESS_TOKEN = 'dev-token';
 
 const clearAuthStorage = () => {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -25,6 +26,14 @@ const setRefreshToken = (token: string) => {
   localStorage.setItem(REFRESH_TOKEN_KEY, token);
 };
 
+const isDevTokenActive = (): boolean => {
+  return getAccessToken() === DEV_ACCESS_TOKEN;
+};
+
+const isNetworkError = (error: AxiosError): boolean => {
+  return !error.response && !!error.message && /Network Error|timeout|ECONNREFUSED/i.test(error.message);
+};
+
 export const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -37,6 +46,9 @@ let isRefreshing = false;
 let refreshPromise: Promise<string> | null = null;
 
 const refreshAccessToken = async (): Promise<string> => {
+  if (isDevTokenActive()) {
+    return DEV_ACCESS_TOKEN;
+  }
   if (refreshPromise) {
     return refreshPromise;
   }
@@ -61,6 +73,9 @@ const refreshAccessToken = async (): Promise<string> => {
       }
       return accessToken;
     } catch (err) {
+      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+        return DEV_ACCESS_TOKEN;
+      }
       clearAuthStorage();
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
@@ -93,7 +108,14 @@ apiClient.interceptors.response.use(
       _retry?: boolean;
     };
 
+    if (isNetworkError(error)) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isDevTokenActive()) {
+        return Promise.reject(error);
+      }
       originalRequest._retry = true;
 
       try {
@@ -103,9 +125,11 @@ apiClient.interceptors.response.use(
         }
         return apiClient(originalRequest);
       } catch (refreshErr) {
-        clearAuthStorage();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+        if (!(typeof window !== 'undefined' && window.location.hostname === 'localhost')) {
+          clearAuthStorage();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(refreshErr);
       }

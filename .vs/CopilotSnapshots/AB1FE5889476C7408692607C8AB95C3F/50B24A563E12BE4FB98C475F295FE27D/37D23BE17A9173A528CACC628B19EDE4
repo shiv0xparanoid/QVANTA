@@ -1,0 +1,891 @@
+﻿import React from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+import { usePrefersReducedMotion } from '@/hooks';
+import HomepageSceneLighting from '@/components/homepage/HomepageSceneLighting';
+import {
+  generatePerParticleDelay,
+  generateScatterPosition,
+  generateSphereTargetPosition,
+  lerp,
+  smoothstep,
+} from '@/lib/quantumTorus';
+
+const UDIM = 76;
+const VDIM = 38;
+const TOTAL_DESKTOP = UDIM * VDIM;
+
+function buildWireframeIndex(uDim: number, vDim: number, maxCount: number): Uint32Array {
+  const out: number[] = [];
+  const count = Math.min(uDim * vDim, maxCount);
+  const idx = (uu: number, vv: number) => {
+    const u = ((uu % uDim) + uDim) % uDim;
+    const v = ((vv % vDim) + vDim) % vDim;
+    const i = u * vDim + v;
+    return i < count ? i : -1;
+  };
+  for (let v = 0; v < vDim; v++) {
+    for (let u = 0; u < uDim; u++) {
+      const a = idx(u, v);
+      const b = idx(u + 1, v);
+      const c = idx(u, v + 1);
+      if (a < 0 || b < 0 || c < 0) continue;
+      if (u * vDim + v >= count) continue;
+      out.push(a, b, a, c);
+    }
+  }
+  return new Uint32Array(out);
+}
+
+interface OrbitRingsProps {
+  progressRef: React.MutableRefObject<number>;
+  reducedMotion: boolean;
+}
+
+const OrbitRings: React.FC<OrbitRingsProps> = ({ progressRef, reducedMotion }) => {
+  const geom1 = React.useMemo(() => {
+    const pts = new THREE.EllipseCurve(0, 0, 3.0, 1.3, 0, Math.PI * 2, false, 0).getPoints(160);
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, []);
+  const geom2 = React.useMemo(() => {
+    const pts = new THREE.EllipseCurve(0, 0, 3.6, 0.9, 0, Math.PI * 2, false, 0).getPoints(160);
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, []);
+  const geom3 = React.useMemo(() => {
+    const pts = new THREE.EllipseCurve(0, 0, 4.2, 1.7, 0, Math.PI * 2, false, 0).getPoints(160);
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, []);
+  const speed = reducedMotion ? 0.012 : 0.3;
+  const line1 = React.useMemo(
+    () =>
+      new THREE.Line(
+        geom1,
+        new THREE.LineBasicMaterial({
+          color: new THREE.Color('#8b6bff'),
+          transparent: true,
+          opacity: 0
+        })
+      ),
+    [geom1]
+  );
+  const line2 = React.useMemo(
+    () =>
+      new THREE.Line(
+        geom2,
+        new THREE.LineBasicMaterial({
+          color: new THREE.Color('#34e0ff'),
+          transparent: true,
+          opacity: 0
+        })
+      ),
+    [geom2]
+  );
+  const line3 = React.useMemo(
+    () =>
+      new THREE.Line(
+        geom3,
+        new THREE.LineBasicMaterial({
+          color: new THREE.Color('#eeecff'),
+          transparent: true,
+          opacity: 0
+        })
+      ),
+    [geom3]
+  );
+  useFrame(({ clock }) => {
+    const opacity = smoothstep(0.18, 0.82, progressRef.current);
+    (line1.material as THREE.LineBasicMaterial).opacity = opacity * 0.6;
+    (line2.material as THREE.LineBasicMaterial).opacity = opacity * 0.55;
+    (line3.material as THREE.LineBasicMaterial).opacity = opacity * 0.3;
+    line1.rotation.y = clock.elapsedTime * speed * 0.7;
+    line2.rotation.y = -clock.elapsedTime * speed * 0.55;
+    line3.rotation.y = clock.elapsedTime * speed * 0.4;
+  });
+  return (
+    <group>
+      <group rotation={[Math.PI * 0.45, 0.25, -0.3]}>
+        <primitive object={line1} dispose={null} />
+      </group>
+      <group rotation={[Math.PI * 0.35, -0.55, 0.45]}>
+        <primitive object={line2} dispose={null} />
+      </group>
+      <group rotation={[Math.PI * 0.22, 0.8, -0.1]}>
+        <primitive object={line3} dispose={null} />
+      </group>
+    </group>
+  );
+};
+
+interface PointsSceneProps {
+  sectionRef: React.RefObject<HTMLElement>;
+}
+
+const PointsScene: React.FC<PointsSceneProps> = ({ sectionRef }) => {
+  const reduced = usePrefersReducedMotion();
+  const activeCount = TOTAL_DESKTOP;
+  const pointsRef = React.useRef<THREE.Points | null>(null);
+  const linesRef = React.useRef<THREE.LineSegments | null>(null);
+  const positionsRef = React.useRef<Float32Array | null>(null);
+  const targetRef = React.useRef<Float32Array | null>(null);
+  const scatterRef = React.useRef<Float32Array | null>(null);
+  const delayRef = React.useRef<Float32Array | null>(null);
+  const cursorWorld = React.useRef<{ x: number; y: number; z: number }>({ x: 0, y: 0, z: 0 });
+  const tRef = React.useRef(0);
+  const tSmoothedRef = React.useRef(0);
+  const { gl, camera } = useThree();
+  const raycaster = React.useMemo(() => new THREE.Raycaster(), []);
+  const ndc = React.useMemo(() => new THREE.Vector2(), []);
+  const plane = React.useMemo(() => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), []);
+  const intersectPt = React.useMemo(() => new THREE.Vector3(), []);
+  const wireframeIdxRef = React.useRef<Uint32Array | null>(null);
+
+  React.useEffect(() => {
+    const targets = new Float32Array(TOTAL_DESKTOP * 3);
+    const scatters = new Float32Array(TOTAL_DESKTOP * 3);
+    const delays = new Float32Array(TOTAL_DESKTOP);
+    for (let i = 0; i < TOTAL_DESKTOP; i++) {
+      const u = Math.floor(i / VDIM) / UDIM;
+      const v = (i % VDIM) / VDIM;
+      generateSphereTargetPosition(u, v, targets, i * 3, 2.75, 0.14);
+      generateScatterPosition(i, 99, scatters, i * 3, 6.5);
+      delays[i] = generatePerParticleDelay(i, 99);
+    }
+    targetRef.current = targets;
+    scatterRef.current = scatters;
+    delayRef.current = delays;
+    positionsRef.current = new Float32Array(scatters);
+  }, []);
+
+  React.useEffect(() => {
+    wireframeIdxRef.current = buildWireframeIndex(UDIM, VDIM, activeCount);
+  }, [activeCount]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  React.useEffect(() => {
+    const onPointer = (ev: PointerEvent) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ndc.set(x, y);
+      raycaster.setFromCamera(ndc, camera);
+      raycaster.ray.intersectPlane(plane, intersectPt);
+      cursorWorld.current.x = intersectPt.x;
+      cursorWorld.current.y = intersectPt.y;
+      cursorWorld.current.z = intersectPt.z;
+    };
+    const dom = gl.domElement;
+    dom.addEventListener('pointermove', onPointer, { passive: true });
+    dom.addEventListener('pointerleave', () => {
+      cursorWorld.current.x = 10000;
+      cursorWorld.current.y = 10000;
+      cursorWorld.current.z = 10000;
+    });
+    return () => {
+      dom.removeEventListener('pointermove', onPointer);
+    };
+  }, [gl, camera, raycaster, ndc, plane, intersectPt]);
+
+  useFrame(({ clock }) => {
+    const section = sectionRef.current;
+    if (section && typeof window !== 'undefined') {
+      const vh = window.innerHeight;
+      const rect = section.getBoundingClientRect();
+      const raw = 1 - (rect.top + vh * 0.2) / (vh * 0.9);
+      tRef.current = reduced ? (raw > 0.4 ? 1 : 0) : smoothstep(-0.05, 1.05, raw);
+    }
+    tSmoothedRef.current = lerp(tSmoothedRef.current, tRef.current, reduced ? 1 : 0.11);
+    const t = clamp01(tSmoothedRef.current);
+    const cursorDist = Math.hypot(cursorWorld.current.x, cursorWorld.current.y, cursorWorld.current.z);
+    const cursorIn = cursorDist < 18 && !reduced ? cursorWorld.current : { x: 999, y: 999, z: 999 };
+    const timeMs = clock.elapsedTime * 1000;
+    const pos = positionsRef.current;
+    const targets = targetRef.current;
+    const scatters = scatterRef.current;
+    const delays = delayRef.current;
+    if (pos && targets && scatters && delays) {
+      for (let i = 0; i < activeCount; i++) {
+        const i3 = i * 3;
+        const local = smoothstep(0, 1, clamp01((t - delays[i]) / 0.45));
+        let px = lerp(scatters[i3], targets[i3], local);
+        let py = lerp(scatters[i3 + 1], targets[i3 + 1], local);
+        let pz = lerp(scatters[i3 + 2], targets[i3 + 2], local);
+        const wobble = reduced ? 0.003 : 0.015;
+        px += Math.sin(timeMs / 1000 * 0.8 + i * 0.07) * wobble;
+        py += Math.cos(timeMs / 1000 * 0.73 + i * 0.09) * wobble;
+        pz += Math.sin(timeMs / 1000 * 0.61 + i * 0.05) * wobble;
+        const dx = px - cursorIn.x;
+        const dy = py - cursorIn.y;
+        const dz = pz - cursorIn.z;
+        const distance = Math.hypot(dx, dy, dz);
+        if (distance < 1.2 && distance > 0.001) {
+          const force = (1 - distance / 1.2) * 0.12;
+          px += (dx / distance) * force;
+          py += (dy / distance) * force;
+          pz += (dz / distance) * force;
+        }
+        pos[i3] = px;
+        pos[i3 + 1] = py;
+        pos[i3 + 2] = pz;
+      }
+      const p = pointsRef.current;
+      const ls = linesRef.current;
+      if (p) {
+        const attr = p.geometry.attributes.position as THREE.BufferAttribute | undefined;
+        if (attr && attr.array.length >= pos.length) {
+          (attr.array as Float32Array).set(pos);
+          attr.needsUpdate = true;
+        }
+      }
+      if (ls) {
+        const attr = ls.geometry.attributes.position as THREE.BufferAttribute | undefined;
+        if (attr && attr.array.length >= pos.length) {
+          (attr.array as Float32Array).set(pos);
+          attr.needsUpdate = true;
+        }
+      }
+    }
+
+    if (pointsRef.current) {
+      const mat = pointsRef.current.material as THREE.PointsMaterial;
+      const opacityT = smoothstep(0.1, 0.9, t);
+      const addCol = new THREE.Color().lerpColors(
+        new THREE.Color('#8b6bff'),
+        new THREE.Color('#34e0ff'),
+        Math.pow(Math.max(0, t), 0.85)
+      );
+      mat.color.copy(addCol);
+      mat.opacity = 0.55 + opacityT * 0.4;
+    }
+    if (linesRef.current) {
+      const mat = linesRef.current.material as THREE.LineBasicMaterial;
+      mat.opacity = Math.max(0, smoothstep(0.3, 0.75, t) * 0.55);
+      mat.color.setHSL(0.7 + t * 0.12, 0.8, 0.65);
+    }
+  });
+
+  const pointsGeom = React.useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const base = new Float32Array(TOTAL_DESKTOP * 3);
+    for (let i = 0; i < TOTAL_DESKTOP; i++) {
+      base[i * 3 + 0] = (Math.random() - 0.5) * 6;
+      base[i * 3 + 1] = (Math.random() - 0.5) * 5;
+      base[i * 3 + 2] = (Math.random() - 0.5) * 6;
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(base, 3));
+    g.setDrawRange(0, activeCount);
+    return g;
+  }, [activeCount]);
+
+  const lineGeom = React.useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const base = new Float32Array(TOTAL_DESKTOP * 3);
+    g.setAttribute('position', new THREE.BufferAttribute(base, 3));
+    if (wireframeIdxRef.current) {
+      g.setIndex(new THREE.BufferAttribute(wireframeIdxRef.current, 1));
+    }
+    return g;
+  }, []);
+
+  React.useEffect(() => {
+    pointsGeom.setDrawRange(0, activeCount);
+    if (wireframeIdxRef.current) {
+      lineGeom.setIndex(new THREE.BufferAttribute(wireframeIdxRef.current, 1));
+    }
+  }, [activeCount, pointsGeom, lineGeom]);
+
+  return (
+    <>
+      <points ref={pointsRef} geometry={pointsGeom}>
+        <pointsMaterial
+          size={0.035}
+          sizeAttenuation
+          transparent
+          opacity={0.6}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          color="#8b6bff"
+        />
+      </points>
+      <lineSegments ref={linesRef} geometry={lineGeom}>
+        <lineBasicMaterial
+          color="#9a96bd"
+          transparent
+          opacity={0}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </lineSegments>
+      <OrbitRings
+        progressRef={tSmoothedRef}
+        reducedMotion={reduced}
+      />
+    </>
+  );
+};
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+const QuantumSphereScreen: React.FC = () => {
+  const sectionRef = React.useRef<HTMLElement | null>(null);
+  return (
+    <section
+      id="quantum-sphere"
+      ref={sectionRef}
+      className="relative isolate flex min-h-[100svh] w-full items-center justify-center overflow-hidden"
+      aria-labelledby="qs-title"
+    >
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <Canvas
+          frameloop="always"
+          dpr={[1, 1.6]}
+          camera={{ position: [0, 0.2, 7.2], fov: 48 }}
+          gl={{ antialias: true, alpha: true }}
+        >
+          <HomepageSceneLighting />
+          <PointsScene sectionRef={sectionRef} />
+        </Canvas>
+        <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-bg-1/85 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-bg-1/95 to-transparent" />
+      </div>
+      <div className="relative z-10 mx-auto flex w-full max-w-4xl flex-col items-center px-6 text-center md:px-8">
+        <div className="flex max-w-2xl flex-col items-center gap-3">
+          <p className="font-mono-quantum text-xs text-cyan/85">
+            superposition, visualized
+          </p>
+          <h2
+            id="qs-title"
+            className="font-display text-[clamp(1.6rem,3vw,2.4rem)] font-medium leading-[1.25] text-ink"
+          >
+            Every qubit is a point on a sphere
+            <span className="block text-[0.58em] font-normal text-ink-dim">
+              — and every particle around it is a state waiting to collapse.
+            </span>
+          </h2>
+        </div>
+      </div>
+      <p className="pointer-events-none absolute bottom-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap font-mono-quantum text-[0.76rem] text-ink-dim/70">
+        scroll closer — or move your cursor
+      </p>
+    </section>
+  );
+};
+
+export default QuantumSphereScreen;

@@ -1,0 +1,48 @@
+﻿import React from 'react';
+
+/**
+ * Hook to lock/unlock scroll during animations
+ * Prevents wheel, touchmove, and keyboard scroll events
+ */
+export const useScrollLock = (isLocked: boolean) => {
+  React.useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (isLocked) {
+        e.preventDefault();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isLocked) {
+        const keys = [32, 33, 34, 35, 36, 37, 38, 39, 40]; // space, pgup, pgdn, end, home, arrows
+        if (keys.includes(e.keyCode)) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isLocked) {
+        e.preventDefault();
+      }
+    };
+
+    if (isLocked) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('wheel', handleWheel, { passive: false });
+      window.addEventListener('keydown', handleKeyDown, { passive: false });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [isLocked]);
+};
+
+export default useScrollLock;

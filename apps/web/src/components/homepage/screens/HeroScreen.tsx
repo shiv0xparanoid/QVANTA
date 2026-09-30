@@ -1,0 +1,96 @@
+import React from 'react';
+import { Canvas } from '@react-three/fiber';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@qvanta/ui';
+import AmbientStarfield from '@/components/homepage/AmbientStarfield';
+import HomepageSceneLighting from '@/components/homepage/HomepageSceneLighting';
+
+const HeroScreen: React.FC = () => {
+  const navigate = useNavigate();
+  const scrollHintOpacity = 1;
+
+  return (
+    <section
+      id="hero"
+      className="relative isolate flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden px-[5vw] pb-12"
+      aria-labelledby="hero-title"
+    >
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <Canvas
+          frameloop="always"
+          dpr={[1, 1.6]}
+          camera={{ position: [0, 0, 8], fov: 50 }}
+          gl={{ antialias: true, alpha: true }}
+        >
+          <HomepageSceneLighting />
+          <AmbientStarfield extent={[40, 26, 30]} color="#eeecff" density={280} />
+          <AmbientStarfield extent={[28, 18, 20]} color="#8b6bff" density={160} />
+        </Canvas>
+        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-bg-1/80 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-bg-1/95 to-transparent" />
+      </div>
+
+      {/* Centered hero content */}
+      <div className="hp-hero-content relative z-10 flex w-full max-w-[900px] flex-col items-center text-center">
+        {/* Eyebrow */}
+        {/* <p className="mb-[22px] font-mono-quantum text-xs tracking-[0.2em] text-violet/90">
+          // interactive quantum computing, in the browser
+        </p> */}
+
+        {/* Headline */}
+        <h1
+          id="hero-title"
+          className="hp-headline font-display text-[clamp(2.4rem,5.5vw,4.6rem)] font-semibold leading-[1.05] text-ink"
+        >
+          Build circuits. Watch <span className="text-cyan">qubits</span> collapse in
+          real time.
+        </h1>
+
+        {/* Subheading */}
+        <p className="hp-sub mb-0 mt-6 max-w-[560px] text-[clamp(1rem,1.4vw,1.1rem)] leading-[1.6] text-ink-dim">
+          QVANTA turns quantum computing from equations on a whiteboard into something
+          you can drag, drop, and run — a 3D circuit builder, live simulation, and an AI
+          tutor that explains what just happened.
+        </p>
+
+        {/* CTAs BELOW headline */}
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+          {/* <Button
+            className="hp-cta !h-12 !px-7 !text-base"
+            variant="primary"
+            onClick={() => navigate('/register')}
+            style={{
+              background: 'linear-gradient(135deg,#8b6bff 0%,#633dff 100%)',
+              boxShadow: '0 10px 40px -10px rgba(139,107,255,0.6)'
+            }}
+          >
+            Start learning →
+          </Button> */}
+          <Button
+            className="hp-cta !h-12 !px-7 !text-base"
+            variant="secondary"
+            onClick={() => {
+              const el = document.getElementById('circuit-showcase');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          >
+            Explore the circuit builder
+          </Button>
+        </div>
+      </div>
+
+      {/* Scroll hint */}
+      {/* <div
+        className="pointer-events-none absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-2.5 font-mono-quantum text-[0.78rem] text-ink-dim"
+        style={{ opacity: scrollHintOpacity }}
+        // aria-hidden */}
+      {/* > */}
+        {/* <span>SCROLL</span>
+        <span className="relative h-px w-[34px] overflow-hidden bg-ink-dim after:absolute after:inset-y-0 after:left-[-100%] after:w-full after:bg-cyan after:content-[''] after:[animation:hp-scrollline_1.8s_ease-in-out_infinite]" />
+        <style>{`@keyframes hp-scrollline { to { left: 100%; } }`}</style>
+      </div> */}
+    </section>
+  );
+};
+
+export default HeroScreen;

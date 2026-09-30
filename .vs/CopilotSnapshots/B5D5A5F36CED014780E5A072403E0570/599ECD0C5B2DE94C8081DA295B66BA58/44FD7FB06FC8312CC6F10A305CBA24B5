@@ -1,0 +1,93 @@
+﻿import React from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import { usePrefersReducedMotion } from '@/hooks';
+import HomepageSceneLighting from '@/components/homepage/HomepageSceneLighting';
+
+const QuantumSphere: React.FC = () => {
+  const meshRef = React.useRef<THREE.Mesh | null>(null);
+  const groupRef = React.useRef<THREE.Group | null>(null);
+  const reduced = usePrefersReducedMotion();
+
+  useFrame(({ clock }) => {
+    const t = reduced ? 0 : clock.elapsedTime;
+
+    if (groupRef.current) {
+      groupRef.current.rotation.y = t * 0.4;
+      groupRef.current.rotation.x = Math.sin(t * 0.8) * 0.25;
+    }
+
+    if (meshRef.current) {
+      const scale = 1.15 + Math.sin(t * 1.7) * 0.08;
+      meshRef.current.scale.setScalar(scale);
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      <mesh ref={meshRef}>
+        <icosahedronGeometry args={[1.2, 2]} />
+        <meshStandardMaterial
+          color="#8b6bff"
+          emissive="#8b6bff"
+          emissiveIntensity={0.8}
+          metalness={0.15}
+          roughness={0.28}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+      <mesh scale={1.4}>
+        <sphereGeometry args={[1.25, 32, 32]} />
+        <meshBasicMaterial
+          color="#34e0ff"
+          transparent
+          opacity={0.14}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+};
+
+const QuantumSphereScreen: React.FC = () => {
+  return (
+    <section
+      id="quantum-sphere"
+      className="relative isolate min-h-[92svh] w-full overflow-hidden px-4 py-16 md:px-8"
+      aria-labelledby="quantum-sphere-title"
+    >
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-8 lg:flex-row">
+        <div className="w-full max-w-xl">
+          <p className="mb-3 font-mono-quantum text-xs tracking-[0.22em] text-violet/80">
+            Quantum state space
+          </p>
+          <h2
+            id="quantum-sphere-title"
+            className="font-display text-[clamp(1.8rem,3vw,3rem)] font-semibold leading-[1.1] text-ink"
+          >
+            Watch probability amplitudes turn into motion.
+          </h2>
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-dim">
+            QVANTA renders qubit states as animated geometric objects so you can feel how
+            superposition, entanglement, and measurement reshape each system in real time.
+          </p>
+        </div>
+
+        <div className="relative mx-auto h-[420px] w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/5 bg-bg-2/40 shadow-[0_35px_90px_-35px_rgba(139,107,255,0.45)] backdrop-blur-sm">
+          <Canvas
+            frameloop="always"
+            dpr={[1, 1.6]}
+            camera={{ position: [0, 0, 5], fov: 45 }}
+            gl={{ antialias: true, alpha: true }}
+          >
+            <HomepageSceneLighting />
+            <QuantumSphere />
+          </Canvas>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default QuantumSphereScreen;

@@ -14,6 +14,70 @@ import type { User, LessonModule, SubscriptionTier } from '@qvanta/types';
 
 const FREE_TIER_CAP = 50;
 
+const FALLBACK_MODULES: LessonModule[] = [
+  {
+    id: 'mod-intro',
+    title: 'Introduction to Quantum Computing',
+    slug: 'intro-quantum',
+    description: 'Learn the fundamentals: qubits, superposition, and measurement. Build your first Bell state.',
+    content: '',
+    order: 1,
+    progress: 'not_started',
+    embedded: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'mod-gates',
+    title: 'Quantum Gates & Circuits',
+    slug: 'gates-circuits',
+    description: 'Master the core gate set — H, X, Y, Z, CNOT — and how gates combine into algorithms.',
+    content: '',
+    order: 2,
+    progress: 'not_started',
+    embedded: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'mod-bloch',
+    title: 'The Bloch Sphere Visualized',
+    slug: 'bloch-sphere',
+    description: 'Understand single-qubit state rotations using the Bloch sphere and interactive visualizations.',
+    content: '',
+    order: 3,
+    progress: 'not_started',
+    embedded: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'mod-algorithms',
+    title: 'Core Quantum Algorithms',
+    slug: 'algorithms',
+    description: 'Explore Deutsch-Jozsa, Grover search, and Shor\'s algorithm with runnable circuits.',
+    content: '',
+    order: 4,
+    progress: 'not_started',
+    embedded: false,
+    createdAt: new Date().toISOString()
+  }
+];
+
+const FALLBACK_TIERS: SubscriptionTier[] = [
+  {
+    tier: 'free',
+    name: 'Free Plan',
+    description: 'Perfect to get started. 50 simulations / month.',
+    simsPerMonth: 50,
+    maxShots: 4096
+  },
+  {
+    tier: 'pro',
+    name: 'Pro Plan',
+    description: 'Unlimited simulations, full lesson library, and priority support.',
+    simsPerMonth: 999999,
+    maxShots: 65536
+  }
+];
+
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const authUser = useAuthStore((s) => s.user);
@@ -25,6 +89,7 @@ const DashboardPage: React.FC = () => {
   const [loading, setLoading] = React.useState(true);
   const [toast, setToast] = React.useState<{ kind: 'info' | 'error' | 'success'; msg: string } | null>(null);
   const [checkoutLoading, setCheckoutLoading] = React.useState(false);
+  const [apiAvailable, setApiAvailable] = React.useState<boolean>(true);
 
   const showToast = (kind: 'info' | 'error' | 'success', msg: string) => {
     setToast({ kind, msg });
@@ -38,18 +103,25 @@ const DashboardPage: React.FC = () => {
         const [me, mods, trs] = await Promise.all([
           apiClient.get<User>('/users/me'),
           apiClient.get<LessonModule[]>('/lessons'),
-          apiClient.get<SubscriptionTier[]>('/billing/tiers').catch(() => ({ data: [] as SubscriptionTier[] }))
+          apiClient.get<SubscriptionTier[]>('/billing/tiers').catch(() => ({ data: FALLBACK_TIERS as SubscriptionTier[] }))
         ]);
         if (cancelled) return;
         setLocalUser(me.data);
         setUser(me.data);
         setModules(mods.data);
-        setTiers(Array.isArray(trs) ? trs : trs.data ?? []);
+        setTiers(Array.isArray((trs as any)?.data) ? (trs as any).data : Array.isArray(trs) ? trs : (trs as any)?.data ?? FALLBACK_TIERS);
+        setApiAvailable(true);
       } catch (err: any) {
         if (!cancelled) {
           const code = err?.response?.data?.error?.code;
           if (code === 'usage_limit_exceeded') {
             showToast('error', 'You have reached your monthly simulation limit. Upgrade to Pro for unlimited simulations.');
+          } else if (authUser) {
+            setLocalUser(authUser);
+            setModules(FALLBACK_MODULES);
+            setTiers(FALLBACK_TIERS);
+            setApiAvailable(false);
+            showToast('info', 'Running in local demo mode — backend is not reachable. Features still available on-device.');
           } else {
             showToast('error', err?.response?.data?.error?.message ?? 'Failed to load dashboard');
           }
@@ -60,7 +132,7 @@ const DashboardPage: React.FC = () => {
     };
     void load();
     return () => { cancelled = true; };
-  }, [setUser]);
+  }, [setUser, authUser]);
 
   const handleNewCircuit = () => navigate('/circuit/new');
 
@@ -82,6 +154,21 @@ const DashboardPage: React.FC = () => {
   const usageMax = user?.tier === 'pro' || user?.tier === 'institution' ? 999999 : FREE_TIER_CAP;
   const usagePct = Math.min(100, Math.round((usageUsed / Math.max(1, usageMax)) * 100));
   const atCap = usageUsed >= FREE_TIER_CAP && user?.tier === 'free';
+
+  const handleOpenModule = (m: LessonModule) => {
+    try {
+      const prompt = [
+        `Let's study the module "${m.title}" together.`,
+        m.description ? `Context: ${m.description}` : '',
+        'Please walk me through this lesson step by step with interactive examples.',
+      ].filter(Boolean).join(' ');
+      sessionStorage.setItem('qvanta.tutor.initialPrompt', prompt);
+      sessionStorage.setItem('qvanta.tutor.initialModule', JSON.stringify({ id: m.id, title: m.title }));
+    } catch {
+      /* sessionStorage may be unavailable in some environments */
+    }
+    navigate('/tutor');
+  };
 
   if (loading) {
     return (
@@ -189,7 +276,16 @@ const DashboardPage: React.FC = () => {
               {modules.map((m) => (
                 <div
                   key={m.id}
-                  className="group flex flex-col justify-between rounded-lg border border-bg-700 bg-bg-900/40 p-4 transition hover:border-primary-600/60 hover:bg-bg-800/60"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleOpenModule(m)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenModule(m);
+                    }
+                  }}
+                  className="group flex cursor-pointer flex-col justify-between rounded-lg border border-bg-700 bg-bg-900/40 p-4 transition hover:border-primary-600/60 hover:bg-bg-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 >
                   <div>
                     <div className="mb-2 flex items-center justify-between">
@@ -201,7 +297,14 @@ const DashboardPage: React.FC = () => {
                     <h3 className="font-semibold text-text-100 group-hover:text-primary-300">{m.title}</h3>
                     <p className="mt-1 line-clamp-2 text-sm text-text-400">{m.description}</p>
                   </div>
-                  <Button variant="ghost" className="mt-4 w-full justify-start px-0 text-primary-400 hover:text-primary-300">
+                  <Button
+                    variant="ghost"
+                    className="mt-4 w-full justify-start px-0 text-left text-primary-400 hover:text-primary-300"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenModule(m);
+                    }}
+                  >
                     Open module →
                   </Button>
                 </div>

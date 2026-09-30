@@ -19,13 +19,18 @@ const USER_KEY = 'qvanta_user';
 const TOKEN_KEY = 'qvanta_token';
 const REFRESH_KEY = 'qvanta_refresh_token';
 
+const DEV_ACCESS_TOKEN = 'dev-token';
+
 const loadInitialState = (): Partial<AuthState> => {
   try {
     const accessToken = localStorage.getItem(TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_KEY);
     const userStr = localStorage.getItem(USER_KEY);
 
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+    const hasExistingAuth = !!accessToken;
+
+    if (isLocalhost && !hasExistingAuth) {
       const mockUser: User = {
         id: 'dev-local',
         email: 'dev@qvanta.ai',
@@ -37,7 +42,7 @@ const loadInitialState = (): Partial<AuthState> => {
         createdAt: new Date().toISOString(),
       };
       const tokens: AuthTokens = {
-        accessToken: 'dev-token',
+        accessToken: DEV_ACCESS_TOKEN,
         refreshToken: 'dev-refresh',
       };
       try {

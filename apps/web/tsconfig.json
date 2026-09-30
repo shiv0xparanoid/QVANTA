@@ -12,6 +12,7 @@
     "declaration": false,
     "declarationMap": false,
     "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["src/*"],
       "@qvanta/types": ["../../packages/types/src"],

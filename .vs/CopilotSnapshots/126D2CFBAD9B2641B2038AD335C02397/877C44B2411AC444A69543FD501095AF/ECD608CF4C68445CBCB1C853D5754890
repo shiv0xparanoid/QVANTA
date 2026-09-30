@@ -1,0 +1,346 @@
+﻿import React from 'react';
+import * as THREE from 'three';
+import { usePrefersReducedMotion } from '@/hooks';
+import { useScrollLock } from '@/hooks/useScrollLock';
+
+/**
+ * QuantumSphereScreen — imperative Three.js scene mounted in React
+ * 
+ * This component ports the verified reference implementation from qvanta.html:
+ * - ~2800 particles forming a wavy folded torus
+ * - Scroll-driven assembly (0→1 progress, smoothed lerp)
+ * - Per-particle staggered delays and wobble
+ * - Cursor repulsion overlay
+ * - 3 counter-rotating orbit rings
+ * - All numeric constants match reference exactly
+ */
+
+const QuantumSphereScreen: React.FC = () => {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const sectionRef = React.useRef<HTMLDivElement | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  React.useEffect(() => {
+    if (!canvasRef.current || !sectionRef.current) return;
+
+    // ===== THREE.js Setup =====
+    const canvas = canvasRef.current;
+    const section = sectionRef.current;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 0, 9);
+
+    // Resize handler
+    const sizeRenderer = () => {
+      const w = section.clientWidth;
+      const h = section.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    sizeRenderer();
+    window.addEventListener('resize', sizeRenderer);
+
+    // ===== Colors =====
+    const violet = new THREE.Color(0x8b6bff);
+    const cyan = new THREE.Color(0x34e0ff);
+
+    // ===== Shape Group =====
+    const shapeGroup = new THREE.Group();
+    shapeGroup.rotation.set(0.55, 0.15, 0.35);
+    scene.add(shapeGroup);
+
+    // ===== Wavy Folded Torus - Grid of Particles =====
+    const URES = 76;
+    const VRES = 38;
+    const COUNT = URES * VRES;
+
+    const posArray = new Float32Array(COUNT * 3); // live, animated
+    const scatterPos = new Float32Array(COUNT * 3); // "free" chaotic state
+    const targetPos = new Float32Array(COUNT * 3); // assembled blob state
+    const colorArray = new Float32Array(COUNT * 3);
+    const delayArr = new Float32Array(COUNT);
+
+    const smoothstep = (t: number) => {
+      t = Math.min(Math.max(t, 0), 1);
+      return t * t * (3 - 2 * t);
+    };
+
+    // Build target shape and scatter positions
+    for (let iu = 0; iu < URES; iu++) {
+      const u = (iu / URES) * Math.PI * 2;
+      for (let iv = 0; iv < VRES; iv++) {
+        const v = (iv / VRES) * Math.PI * 2;
+        const i = iu * VRES + iv;
+
+        // Folded, undulating torus
+        const Rmaj = 1.75 + 0.42 * Math.sin(3 * u) + 0.14 * Math.cos(5 * u);
+        const Rtube = 0.58 + 0.22 * Math.sin(2 * u + v * 0.6);
+        const fold = 0.28 * Math.sin(4 * u + 2 * v);
+
+        const x = (Rmaj + Rtube * Math.cos(v)) * Math.cos(u);
+        const z = (Rmaj + Rtube * Math.cos(v)) * Math.sin(u);
+        const y = Rtube * Math.sin(v) + fold;
+
+        targetPos[i * 3] = x;
+        targetPos[i * 3 + 1] = y;
+        targetPos[i * 3 + 2] = z;
+
+        // Scattered "free" state — loose cloud filling the viewport
+        const sr = 3.4 + Math.random() * 4.2;
+        const sphi = Math.random() * Math.PI;
+        const stheta = Math.random() * Math.PI * 2;
+        scatterPos[i * 3] = sr * Math.sin(sphi) * Math.cos(stheta);
+        scatterPos[i * 3 + 1] = sr * Math.sin(sphi) * Math.sin(stheta);
+        scatterPos[i * 3 + 2] = sr * Math.cos(sphi);
+
+        // Initialize with scatter positions
+        posArray[i * 3] = scatterPos[i * 3];
+        posArray[i * 3 + 1] = scatterPos[i * 3 + 1];
+        posArray[i * 3 + 2] = scatterPos[i * 3 + 2];
+
+        // Per-particle color: violet→cyan gradient based on u,v position
+        const c = violet
+          .clone()
+          .lerp(cyan, ((Math.sin(u) + 1) / 2) * 0.6 + (v / (Math.PI * 2)) * 0.4);
+        colorArray[i * 3] = c.r;
+        colorArray[i * 3 + 1] = c.g;
+        colorArray[i * 3 + 2] = c.b;
+
+        // Staggered assembly delay per particle
+        delayArr[i] = Math.random() * 0.55;
+      }
+    }
+
+    const sharedPos = new THREE.BufferAttribute(posArray, 3);
+
+    // ===== Points (glowing nodes) =====
+    const ptsGeo = new THREE.BufferGeometry();
+    ptsGeo.setAttribute('position', sharedPos);
+    ptsGeo.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+    const ptsMat = new THREE.PointsMaterial({
+      size: 0.05,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const points = new THREE.Points(ptsGeo, ptsMat);
+    shapeGroup.add(points);
+
+    // ===== Connecting Grid Lines =====
+    const lineIdx: number[] = [];
+    for (let iu = 0; iu < URES; iu++) {
+      for (let iv = 0; iv < VRES; iv++) {
+        const i = iu * VRES + iv;
+        const iNextU = ((iu + 1) % URES) * VRES + iv;
+        const iNextV = iu * VRES + ((iv + 1) % VRES);
+        lineIdx.push(i, iNextU);
+        lineIdx.push(i, iNextV);
+      }
+    }
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', sharedPos);
+    lineGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(lineIdx), 1));
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x8b6bff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    const gridLines = new THREE.LineSegments(lineGeo, lineMat);
+    shapeGroup.add(gridLines);
+
+    // ===== Orbit Rings =====
+    const ringMat1 = new THREE.LineBasicMaterial({
+      color: 0x34e0ff,
+      transparent: true,
+      opacity: 0,
+    });
+    const ringMat2 = new THREE.LineBasicMaterial({
+      color: 0x8b6bff,
+      transparent: true,
+      opacity: 0,
+    });
+    const ringConfigs = [
+      { radius: 3.0, tiltX: 1.15, tiltZ: 0.1, mat: ringMat1, speed: 0.05 },
+      { radius: 3.35, tiltX: 0.35, tiltZ: 0.9, mat: ringMat2, speed: -0.035 },
+      { radius: 2.75, tiltX: -0.6, tiltZ: -0.4, mat: ringMat1, speed: 0.065 },
+    ];
+    const rings = ringConfigs.map((cfg) => {
+      const curve = new THREE.EllipseCurve(
+        0,
+        0,
+        cfg.radius,
+        cfg.radius * 0.92,
+        0,
+        Math.PI * 2,
+        false,
+        0
+      );
+      const pts = curve
+        .getPoints(128)
+        .map((p) => new THREE.Vector3(p.x, 0, p.y));
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const ring = new THREE.LineLoop(geo, cfg.mat);
+      ring.rotation.x = cfg.tiltX;
+      ring.rotation.z = cfg.tiltZ;
+      ring.userData.speed = cfg.speed;
+      shapeGroup.add(ring);
+      return ring;
+    });
+
+    // ===== Scroll Progress Tracking =====
+    let rawProgress = 0;
+    let smoothProgress = 0;
+
+    const updateProgress = () => {
+      const rect = section.getBoundingClientRect();
+      const vh = window.innerHeight;
+      rawProgress = Math.min(Math.max(1 - rect.top / vh, 0), 1);
+    };
+
+    window.addEventListener('scroll', updateProgress, { passive: true });
+    window.addEventListener('resize', updateProgress);
+    updateProgress();
+
+    // ===== Mouse Interaction =====
+    const mouse = new THREE.Vector2(0, 0);
+    const raycaster = new THREE.Raycaster();
+    const interactPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const mouseWorld = new THREE.Vector3(0, 0, 0);
+    let targetMouseWorld = new THREE.Vector3(0, 0, 0);
+
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = section.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(interactPlane, targetMouseWorld);
+    };
+
+    section.addEventListener('mousemove', onMouseMove);
+
+    const REPEL_RADIUS = 1.1;
+    const REPEL_STRENGTH = 0.045;
+
+    // ===== Animation Loop =====
+    const clock = new THREE.Clock();
+    let animationId: number;
+
+    const animate = () => {
+      animationId = requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t = clock.elapsedTime;
+
+      // Smooth progress lerp
+      smoothProgress += (rawProgress - smoothProgress) * (reducedMotion ? 0.01 : 0.06);
+
+      // Rotate shape slightly each frame
+      shapeGroup.rotation.y += 0.06 * dt;
+
+      // Update each particle
+      for (let i = 0; i < COUNT; i++) {
+        const ix = i * 3;
+        const iy = i * 3 + 1;
+        const iz = i * 3 + 2;
+
+        // Smoothstep ease-in for per-particle staggered assembly
+        const localT = smoothstep((smoothProgress - delayArr[i]) / 0.45);
+
+        // Gentle idle wobble
+        const wob =
+          Math.sin(t * 0.6 + i) * 0.03 * (1 - localT * 0.7);
+
+        // Interpolate scatter → target
+        let x = THREE.MathUtils.lerp(
+          scatterPos[ix],
+          targetPos[ix],
+          localT
+        ) + wob;
+        let y = THREE.MathUtils.lerp(
+          scatterPos[iy],
+          targetPos[iy],
+          localT
+        ) + wob * 0.6;
+        let z = THREE.MathUtils.lerp(
+          scatterPos[iz],
+          targetPos[iz],
+          localT
+        ) + wob;
+
+        // Cursor repulsion
+        const dx = x - mouseWorld.x;
+        const dy = y - mouseWorld.y;
+        const dz = z - mouseWorld.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.0001;
+        if (dist < REPEL_RADIUS) {
+          const force =
+            ((1 - dist / REPEL_RADIUS) * REPEL_STRENGTH * (0.4 + localT * 0.6));
+          x += (dx / dist) * force;
+          y += (dy / dist) * force;
+          z += (dz / dist) * force;
+        }
+
+        posArray[ix] = x;
+        posArray[iy] = y;
+        posArray[iz] = z;
+      }
+      sharedPos.needsUpdate = true;
+
+      // Update opacities based on progress
+      ptsMat.opacity = 0.55 + smoothProgress * 0.4;
+      lineMat.opacity = Math.max(0, smoothProgress - 0.35) * 0.35;
+
+      rings.forEach((ring) => {
+        ring.material.opacity = Math.max(0, smoothProgress - 0.2) * 0.5;
+        ring.rotation.y += ring.userData.speed * dt;
+      });
+
+      // Lerp mouse position
+      mouseWorld.lerp(targetMouseWorld, 0.08);
+
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    // ===== Cleanup =====
+    return () => {
+      cancelAnimationFrame(animationId);
+      window.removeEventListener('scroll', updateProgress);
+      window.removeEventListener('resize', updateProgress);
+      window.removeEventListener('resize', sizeRenderer);
+      section.removeEventListener('mousemove', onMouseMove);
+      renderer.dispose();
+      ptsGeo.dispose();
+      ptsMat.dispose();
+      lineGeo.dispose();
+      lineMat.dispose();
+      ringConfigs.forEach((_, i) => {
+        rings[i].geometry.dispose();
+        (rings[i].material as THREE.Material).dispose();
+      });
+    };
+  }, [reducedMotion]);
+
+  return (
+    <section
+      ref={sectionRef}
+      id="quantum-sphere"
+      className="relative isolate h-screen w-full overflow-hidden"
+      aria-labelledby="sphere-caption"
+    >
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 z-10 block w-full h-full"
+      />
+    </section>
+  );
+};
+
+export default QuantumSphereScreen;

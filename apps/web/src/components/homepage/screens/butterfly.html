@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QVANTA — Learn Quantum Computing, Visually</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg: #06050f;
+    --bg-2: #0a0918;
+    --violet: #8b6bff;
+    --violet-dim: #5a4a9e;
+    --cyan: #34e0ff;
+    --ink: #eeecff;
+    --ink-dim: #9a96bd;
+    --line: rgba(238,236,255,0.10);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    overflow-x:hidden;
+  }
+
+  .butterfly-screen{
+    position:relative; z-index:1; height:100vh; width:100%;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  #butterfly-canvas{ position:absolute; inset:0; z-index:1; }
+  .butterfly-caption{
+    position:relative; z-index:2; text-align:center; pointer-events:none;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+  }
+  .butterfly-caption .tag{
+    font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--cyan); opacity:0.85;
+  }
+  .butterfly-caption h2{
+    font-family:'Space Grotesk',sans-serif; font-weight:500;
+    font-size:clamp(1.5rem, 2.8vw, 2.2rem); max-width:620px; line-height:1.3;
+  }
+  .butterfly-caption span{ color:var(--ink-dim); font-size:0.92rem; font-family:'Inter',sans-serif; }
+
+  </style>
+  </head>
+
+  <body>
+
+    <section class="butterfly-screen">
+  <canvas id="butterfly-canvas"></canvas>
+  <div class="butterfly-caption">
+    <!-- <div class="tag">sensitivity to initial conditions</div> -->
+    <!-- <h2>Change one gate, and the whole state changes with it.<br><span>Every equation you run is a wingbeat — small, precise, and impossible to undo.</span></h2> -->
+  </div>
+</section>
+ 
+<script>
+(function(){
+  const canvas = document.getElementById('sphere-canvas');
+  const section = document.querySelector('.sphere-screen');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+ 
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+  camera.position.set(0, 0, 9);
+ 
+  function sizeRenderer(){
+    const w = section.clientWidth, h = section.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  sizeRenderer();
+  window.addEventListener('resize', sizeRenderer);
+ 
+  const violet = new THREE.Color(0x8b6bff);
+  const cyan   = new THREE.Color(0x34e0ff);
+ 
+  const shapeGroup = new THREE.Group();
+  shapeGroup.rotation.set(0.55, 0.15, 0.35);
+  scene.add(shapeGroup);
+ 
+  // ---------- build the wavy torus-blob target shape (grid of points, per reference image) ----------
+  const URES = 76, VRES = 38;
+  const COUNT = URES * VRES;
+ 
+  const posArray    = new Float32Array(COUNT * 3); // live, animated
+  const scatterPos  = new Float32Array(COUNT * 3); // "free" chaotic state
+  const targetPos   = new Float32Array(COUNT * 3); // assembled blob state
+  const colorArray  = new Float32Array(COUNT * 3);
+  const delayArr    = new Float32Array(COUNT);
+ 
+  function smoothstep(t){ t = Math.min(Math.max(t,0),1); return t*t*(3-2*t); }
+ 
+  for(let iu=0; iu<URES; iu++){
+    const u = (iu / URES) * Math.PI * 2;
+    for(let iv=0; iv<VRES; iv++){
+      const v = (iv / VRES) * Math.PI * 2;
+      const i = iu*VRES + iv;
+ 
+      // folded, undulating torus — major/tube radius modulated to create the woven, wavy look
+      const Rmaj   = 1.75 + 0.42*Math.sin(3*u) + 0.14*Math.cos(5*u);
+      const Rtube  = 0.58 + 0.22*Math.sin(2*u + v*0.6);
+      const fold   = 0.28*Math.sin(4*u + 2*v);
+ 
+      const x = (Rmaj + Rtube*Math.cos(v)) * Math.cos(u);
+      const z = (Rmaj + Rtube*Math.cos(v)) * Math.sin(u);
+      const y = Rtube*Math.sin(v) + fold;
+ 
+      targetPos[i*3]=x; targetPos[i*3+1]=y; targetPos[i*3+2]=z;
+ 
+      // scattered "free" state — loose cloud filling the viewport, no structure
+      const sr = 3.4 + Math.random()*4.2;
+      const sphi = Math.random()*Math.PI, stheta = Math.random()*Math.PI*2;
+      scatterPos[i*3]   = sr*Math.sin(sphi)*Math.cos(stheta);
+      scatterPos[i*3+1] = sr*Math.sin(sphi)*Math.sin(stheta);
+      scatterPos[i*3+2] = sr*Math.cos(sphi);
+ 
+      posArray[i*3]=scatterPos[i*3]; posArray[i*3+1]=scatterPos[i*3+1]; posArray[i*3+2]=scatterPos[i*3+2];
+ 
+      const c = violet.clone().lerp(cyan, (Math.sin(u)+1)/2 * 0.6 + (v/(Math.PI*2))*0.4);
+      colorArray[i*3]=c.r; colorArray[i*3+1]=c.g; colorArray[i*3+2]=c.b;
+ 
+      delayArr[i] = Math.random()*0.55; // staggered assembly per particle
+    }
+  }
+ 
+  const sharedPos = new THREE.BufferAttribute(posArray, 3);
+ 
+  // points (the glowing nodes)
+  const ptsGeo = new THREE.BufferGeometry();
+  ptsGeo.setAttribute('position', sharedPos);
+  ptsGeo.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+  const ptsMat = new THREE.PointsMaterial({
+    size:0.05, vertexColors:true, transparent:true, opacity:0.95,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const points = new THREE.Points(ptsGeo, ptsMat);
+  shapeGroup.add(points);
+ 
+  // connecting grid lines (fade in as the shape assembles — the "wireframe surface" look)
+  const lineIdx = [];
+  for(let iu=0; iu<URES; iu++){
+    for(let iv=0; iv<VRES; iv++){
+      const i = iu*VRES+iv;
+      const iNextU = ((iu+1)%URES)*VRES + iv;
+      const iNextV = iu*VRES + ((iv+1)%VRES);
+      lineIdx.push(i, iNextU);
+      lineIdx.push(i, iNextV);
+    }
+  }
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', sharedPos);
+  lineGeo.setIndex(lineIdx);
+  const lineMat = new THREE.LineBasicMaterial({
+    color:0x8b6bff, transparent:true, opacity:0, blending:THREE.AdditiveBlending
+  });
+  const gridLines = new THREE.LineSegments(lineGeo, lineMat);
+  shapeGroup.add(gridLines);
+ 
+  // ---------- orbit rings, per reference image ----------
+  const ringMat1 = new THREE.LineBasicMaterial({ color:0x34e0ff, transparent:true, opacity:0 });
+  const ringMat2 = new THREE.LineBasicMaterial({ color:0x8b6bff, transparent:true, opacity:0 });
+  const ringConfigs = [
+    { radius:3.0, tiltX:1.15, tiltZ:0.1,  mat:ringMat1, speed:0.05 },
+    { radius:3.35,tiltX:0.35, tiltZ:0.9,  mat:ringMat2, speed:-0.035 },
+    { radius:2.75,tiltX:-0.6, tiltZ:-0.4, mat:ringMat1, speed:0.065 },
+  ];
+  const rings = ringConfigs.map(cfg=>{
+    const curve = new THREE.EllipseCurve(0,0, cfg.radius, cfg.radius*0.92, 0, Math.PI*2, false, 0);
+    const pts = curve.getPoints(128).map(p=>new THREE.Vector3(p.x, 0, p.y));
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const ring = new THREE.LineLoop(geo, cfg.mat);
+    ring.rotation.x = cfg.tiltX; ring.rotation.z = cfg.tiltZ;
+    ring.userData.speed = cfg.speed;
+    shapeGroup.add(ring);
+    return ring;
+  });
+ 
+  // ---------- scroll progress: 0 = section not reached, 1 = fully arrived ----------
+  let rawProgress = 0, smoothProgress = 0;
+  function updateProgress(){
+    const rect = section.getBoundingClientRect();
+    const vh = window.innerHeight;
+    rawProgress = Math.min(Math.max(1 - (rect.top / vh), 0), 1);
+  }
+  window.addEventListener('scroll', updateProgress, { passive:true });
+  window.addEventListener('resize', updateProgress);
+  updateProgress();
+ 
+  // ---------- mouse interaction ----------
+  const mouse = new THREE.Vector2(0,0);
+  const raycaster = new THREE.Raycaster();
+  const interactPlane = new THREE.Plane(new THREE.Vector3(0,0,1), 0);
+  const mouseWorld = new THREE.Vector3(0,0,0);
+  let targetMouseWorld = new THREE.Vector3(0,0,0);
+ 
+  section.addEventListener('mousemove', (e)=>{
+    const rect = section.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    raycaster.ray.intersectPlane(interactPlane, targetMouseWorld);
+  });
+ 
+  const REPEL_RADIUS = 1.1;
+  const REPEL_STRENGTH = 0.045;
+ 
+  const clock = new THREE.Clock();
+ 
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+ 
+    smoothProgress += (rawProgress - smoothProgress) * 0.06;
+ 
+    shapeGroup.rotation.y += 0.06 * dt;
+ 
+    for(let i=0;i<COUNT;i++){
+      const ix=i*3, iy=i*3+1, iz=i*3+2;
+ 
+      const localT = smoothstep((smoothProgress - delayArr[i]) / 0.45);
+ 
+      // gentle idle wobble so the cloud never looks static, even fully scattered or fully assembled
+      const wob = Math.sin(t*0.6 + i) * 0.03 * (1 - localT*0.7);
+ 
+      let x = THREE.MathUtils.lerp(scatterPos[ix], targetPos[ix], localT) + wob;
+      let y = THREE.MathUtils.lerp(scatterPos[iy], targetPos[iy], localT) + wob*0.6;
+      let z = THREE.MathUtils.lerp(scatterPos[iz], targetPos[iz], localT) + wob;
+ 
+      // cursor repulsion (subtle, more felt once mostly assembled)
+      const dx = x - mouseWorld.x, dy = y - mouseWorld.y, dz = z - mouseWorld.z;
+      const dist = Math.sqrt(dx*dx+dy*dy+dz*dz) + 0.0001;
+      if(dist < REPEL_RADIUS){
+        const force = (1 - dist/REPEL_RADIUS) * REPEL_STRENGTH * (0.4 + localT*0.6);
+        x += (dx/dist)*force; y += (dy/dist)*force; z += (dz/dist)*force;
+      }
+ 
+      posArray[ix]=x; posArray[iy]=y; posArray[iz]=z;
+    }
+    sharedPos.needsUpdate = true;
+ 
+    ptsMat.opacity = 0.55 + smoothProgress*0.4;
+    lineMat.opacity = Math.max(0, (smoothProgress-0.35)) * 0.35;
+ 
+    rings.forEach(r=>{
+      r.material.opacity = Math.max(0, smoothProgress-0.2) * 0.5;
+      r.rotation.y += r.userData.speed * dt;
+    });
+ 
+    mouseWorld.lerp(targetMouseWorld, 0.08);
+ 
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+ 
+<script>
+(function(){
+  const canvas = document.getElementById('orb-canvas');
+  const panel = document.querySelector('.why-right');
+  const featureBlocks = document.querySelectorAll('.feature-block');
+  if(!canvas || !panel) return;
+ 
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+ 
+  const scene = new THREE.Scene();
+  const BASE_CAM_Z = 3.3;
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 50);
+  camera.position.set(0, 0, BASE_CAM_Z);
+ 
+  function sizeRenderer(){
+    const w = panel.clientWidth, h = panel.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  sizeRenderer();
+  window.addEventListener('resize', sizeRenderer);
+ 
+  const violet = new THREE.Color(0x8b6bff);
+  const cyan   = new THREE.Color(0x34e0ff);
+ 
+  const coreGroup = new THREE.Group();
+  scene.add(coreGroup);
+ 
+  // ---------- fake-bloom glow (canvas radial-gradient sprite, additive) ----------
+  function makeGlowTexture(){
+    const size = 256;
+    const cnv = document.createElement('canvas'); cnv.width = cnv.height = size;
+    const ctx = cnv.getContext('2d');
+    const grad = ctx.createRadialGradient(size/2,size/2,0, size/2,size/2,size/2);
+    grad.addColorStop(0,   'rgba(190,165,255,0.95)');
+    grad.addColorStop(0.35,'rgba(139,107,255,0.4)');
+    grad.addColorStop(1,   'rgba(139,107,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,size,size);
+    return new THREE.CanvasTexture(cnv);
+  }
+  const glowMat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(), transparent:true, blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const glowSprite = new THREE.Sprite(glowMat);
+  glowSprite.scale.set(3.2, 3.2, 1);
+  coreGroup.add(glowSprite);
+ 
+  // ---------- nested semi-transparent shells (the "look inside" depth layers) ----------
+  const shellRadii = [0.95, 0.68, 0.42];
+  shellRadii.forEach((r, idx)=>{
+    const geo = new THREE.SphereGeometry(r, 32, 24);
+    const c = violet.clone().lerp(cyan, idx/(shellRadii.length-1));
+    const mat = new THREE.MeshBasicMaterial({
+      color:c, transparent:true, opacity: 0.20 + idx*0.09,
+      blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide
+    });
+    coreGroup.add(new THREE.Mesh(geo, mat));
+  });
+ 
+  // bright inner point-core (the "engine" nucleus)
+  const innerCoreMat = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.85 });
+  const innerCore = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), innerCoreMat);
+  coreGroup.add(innerCore);
+ 
+  // ---------- 3 orbit rings, mapped 1:1 to the 01 / 02 / 03 feature blocks ----------
+  const ringDefs = [
+    { radius:1.55, tiltX:0.9,   tiltZ:0.15,  color:0x34e0ff, speed:0.09  },
+    { radius:1.78, tiltX:0.25,  tiltZ:0.85,  color:0x8b6bff, speed:-0.065},
+    { radius:1.32, tiltX:-0.55, tiltZ:-0.35, color:0xeeecff, speed:0.11  },
+  ];
+  const rings = ringDefs.map(cfg=>{
+    const curve = new THREE.EllipseCurve(0,0, cfg.radius, cfg.radius*0.9, 0, Math.PI*2, false, 0);
+    const pts = curve.getPoints(96).map(p=>new THREE.Vector3(p.x, 0, p.y));
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color:cfg.color, transparent:true, opacity:0.22 });
+    const ring = new THREE.LineLoop(geo, mat);
+    ring.rotation.x = cfg.tiltX; ring.rotation.z = cfg.tiltZ;
+    ring.userData.speed = cfg.speed;
+    ring.userData.baseOpacity = 0.22;
+    coreGroup.add(ring);
+    return ring;
+  });
+ 
+  // ---------- hover state: feature list <-> ring mapping, panel <-> camera peek ----------
+  let hoverIndex = -1;
+  let panelHovered = false;
+  featureBlocks.forEach(el=>{
+    el.addEventListener('mouseenter', ()=>{
+      hoverIndex = parseInt(el.dataset.feature, 10);
+      el.classList.add('is-active');
+    });
+    el.addEventListener('mouseleave', ()=>{
+      hoverIndex = -1;
+      el.classList.remove('is-active');
+    });
+  });
+  panel.addEventListener('mouseenter', ()=> panelHovered = true);
+  panel.addEventListener('mouseleave', ()=> panelHovered = false);
+ 
+  const clock = new THREE.Clock();
+ 
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+ 
+    coreGroup.rotation.y += 0.07 * dt;
+ 
+    // ring highlight: mapped ring brightens, the other two dim, per hovered feature
+    rings.forEach((r, idx)=>{
+      const isActive = idx === hoverIndex;
+      const target = isActive ? 0.9 : (hoverIndex === -1 ? r.userData.baseOpacity : r.userData.baseOpacity*0.3);
+      r.material.opacity += (target - r.material.opacity) * 0.12;
+      r.rotation.y += r.userData.speed * dt;
+    });
+ 
+    // idle breathing drift + hover "peek inside" — small eased camera dolly/rotate, never jarring
+    const idleDrift = Math.sin(t*0.35) * 0.08;
+    const targetZ = panelHovered ? BASE_CAM_Z - 0.85 : BASE_CAM_Z + idleDrift;
+    const targetX = panelHovered ? 0.32 : 0;
+    const targetTiltX = panelHovered ? 0.14 : 0;
+ 
+    camera.position.z += (targetZ - camera.position.z) * 0.05;
+    camera.position.x += (targetX - camera.position.x) * 0.05;
+    coreGroup.rotation.x += (targetTiltX - coreGroup.rotation.x) * 0.04;
+    camera.lookAt(0, 0, 0);
+ 
+    innerCoreMat.opacity = 0.7 + Math.sin(t*2) * 0.15;
+    glowMat.opacity = 0.85 + Math.sin(t*1.3) * 0.1;
+ 
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+ 
+<script>
+(function(){
+  const canvas = document.getElementById('butterfly-canvas');
+  const section = document.querySelector('.butterfly-screen');
+  if(!canvas || !section) return;
+ 
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+ 
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
+  camera.position.set(0, 0, 8);
+ 
+  function sizeRenderer(){
+    const w = section.clientWidth, h = section.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  sizeRenderer();
+  window.addEventListener('resize', sizeRenderer);
+ 
+  const violet = new THREE.Color(0x8b6bff);
+  const cyan   = new THREE.Color(0x34e0ff);
+ 
+  const wingGroup = new THREE.Group();
+  scene.add(wingGroup);
+ 
+  function smoothstep(t){ t = Math.min(Math.max(t,0),1); return t*t*(3-2*t); }
+ 
+  // ---------- the shape IS a real equation: Temple Fay's transcendental butterfly curve ----------
+  // x(t) = sin(t) * ( e^cos(t) - 2cos(4t) - sin^5(t/12) ),  y(t) = cos(t) * (same),  t in [0, 12π]
+  const COUNT = 3200;
+  const posArray   = new Float32Array(COUNT * 3);
+  const scatterPos = new Float32Array(COUNT * 3);
+  const targetPos  = new Float32Array(COUNT * 3);
+  const colorArray = new Float32Array(COUNT * 3);
+  const delayArr   = new Float32Array(COUNT);
+  const SCALE = 0.62;
+ 
+  for(let i=0;i<COUNT;i++){
+    const t = (i / COUNT) * Math.PI * 12;
+    const r = Math.exp(Math.sin(t)) - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12), 5);
+    const bx = Math.sin(t) * r * SCALE;
+    const by = Math.cos(t) * r * SCALE;
+ 
+    // small volumetric jitter so it reads as a particle cloud, not a thin traced line
+    const jx = (Math.random()-0.5) * 0.22;
+    const jy = (Math.random()-0.5) * 0.22;
+    const jz = (Math.random()-0.5) * 0.55;
+ 
+    targetPos[i*3]   = bx + jx;
+    targetPos[i*3+1] = by + jy - 0.3; // recenter, curve sits a bit high by default
+    targetPos[i*3+2] = jz;
+ 
+    const sr = 3.2 + Math.random()*4.5;
+    const sphi = Math.random()*Math.PI, stheta = Math.random()*Math.PI*2;
+    scatterPos[i*3]   = sr*Math.sin(sphi)*Math.cos(stheta);
+    scatterPos[i*3+1] = sr*Math.sin(sphi)*Math.sin(stheta);
+    scatterPos[i*3+2] = sr*Math.cos(sphi);
+ 
+    posArray[i*3]=scatterPos[i*3]; posArray[i*3+1]=scatterPos[i*3+1]; posArray[i*3+2]=scatterPos[i*3+2];
+ 
+    const c = violet.clone().lerp(cyan, Math.abs(Math.sin(t*0.5)));
+    colorArray[i*3]=c.r; colorArray[i*3+1]=c.g; colorArray[i*3+2]=c.b;
+ 
+    delayArr[i] = Math.random()*0.55;
+  }
+ 
+  const sharedPos = new THREE.BufferAttribute(posArray, 3);
+  const ptsGeo = new THREE.BufferGeometry();
+  ptsGeo.setAttribute('position', sharedPos);
+  ptsGeo.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+  const ptsMat = new THREE.PointsMaterial({
+    size:0.045, vertexColors:true, transparent:true, opacity:0.9,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const points = new THREE.Points(ptsGeo, ptsMat);
+  wingGroup.add(points);
+ 
+  // ---------- sparse "glitch" layer: a subsample that flickers independently, RGB-split style ----------
+  const GLITCH_COUNT = 260;
+  const glitchIdx = [];
+  for(let i=0;i<GLITCH_COUNT;i++) glitchIdx.push(Math.floor(Math.random()*COUNT));
+  const glitchArr = new Float32Array(GLITCH_COUNT*3);
+  const glitchGeo = new THREE.BufferGeometry();
+  glitchGeo.setAttribute('position', new THREE.BufferAttribute(glitchArr, 3));
+  const glitchMat = new THREE.PointsMaterial({
+    size:0.09, color:0x34e0ff, transparent:true, opacity:0,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const glitchPoints = new THREE.Points(glitchGeo, glitchMat);
+  wingGroup.add(glitchPoints);
+ 
+  // ---------- floating equation glyphs — the "mathematical" half of the ask ----------
+  const GLYPHS = ['|ψ⟩','ħ','∑','∫','Δφ','e^{iθ}','⊗','√2','π','∇','U(θ)','|0⟩','|1⟩','α²+β²=1'];
+  function makeGlyphTexture(str){
+    const cnv = document.createElement('canvas'); cnv.width=256; cnv.height=96;
+    const ctx = cnv.getContext('2d');
+    ctx.font = '600 44px "JetBrains Mono", monospace';
+    ctx.fillStyle = 'rgba(238,236,255,0.95)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor = 'rgba(139,107,255,0.9)'; ctx.shadowBlur = 18;
+    ctx.fillText(str, 128, 48);
+    return new THREE.CanvasTexture(cnv);
+  }
+  const GLYPH_SAMPLE_COUNT = 22;
+  const glyphSprites = [];
+  for(let g=0; g<GLYPH_SAMPLE_COUNT; g++){
+    const i = Math.floor((g / GLYPH_SAMPLE_COUNT) * COUNT);
+    const tex = makeGlyphTexture(GLYPHS[g % GLYPHS.length]);
+    const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false });
+    const spr = new THREE.Sprite(mat);
+    spr.scale.set(0.9, 0.34, 1);
+    spr.userData.particleIndex = i;
+    spr.userData.floatSeed = Math.random()*Math.PI*2;
+    wingGroup.add(spr);
+    glyphSprites.push(spr);
+  }
+ 
+  // ---------- scroll progress ----------
+  let rawProgress = 0, smoothProgress = 0;
+  function updateProgress(){
+    const rect = section.getBoundingClientRect();
+    const vh = window.innerHeight;
+    rawProgress = Math.min(Math.max(1 - (rect.top / vh), 0), 1);
+  }
+  window.addEventListener('scroll', updateProgress, { passive:true });
+  window.addEventListener('resize', updateProgress);
+  updateProgress();
+ 
+  const clock = new THREE.Clock();
+ 
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+ 
+    smoothProgress += (rawProgress - smoothProgress) * 0.06;
+ 
+    // gentle "flight": slow drift + wingbeat breathing on the x-scale
+    wingGroup.position.x = Math.sin(t*0.18) * 0.5;
+    wingGroup.position.y = Math.sin(t*0.27) * 0.22;
+    wingGroup.rotation.z = Math.sin(t*0.15) * 0.06;
+    const wingbeat = 1 + Math.sin(t*1.6) * 0.045 * smoothProgress;
+    wingGroup.scale.set(wingbeat, 1, 1);
+ 
+    for(let i=0;i<COUNT;i++){
+      const ix=i*3, iy=i*3+1, iz=i*3+2;
+      const localT = smoothstep((smoothProgress - delayArr[i]) / 0.45);
+      const wob = Math.sin(t*0.8 + i) * 0.025 * (1 - localT*0.6);
+      posArray[ix] = THREE.MathUtils.lerp(scatterPos[ix], targetPos[ix], localT) + wob;
+      posArray[iy] = THREE.MathUtils.lerp(scatterPos[iy], targetPos[iy], localT) + wob*0.6;
+      posArray[iz] = THREE.MathUtils.lerp(scatterPos[iz], targetPos[iz], localT) + wob;
+    }
+    sharedPos.needsUpdate = true;
+    ptsMat.opacity = 0.5 + smoothProgress*0.4;
+ 
+    // glitch flicker: reposition the sparse subsample near their source particle, flash opacity randomly
+    if(Math.random() < 0.6){
+      for(let g=0; g<GLITCH_COUNT; g++){
+        const src = glitchIdx[g];
+        glitchArr[g*3]   = posArray[src*3]   + (Math.random()-0.5)*0.35;
+        glitchArr[g*3+1] = posArray[src*3+1] + (Math.random()-0.5)*0.35;
+        glitchArr[g*3+2] = posArray[src*3+2] + (Math.random()-0.5)*0.35;
+      }
+      glitchGeo.attributes.position.needsUpdate = true;
+    }
+    glitchMat.opacity = (Math.random() < 0.12 ? Math.random()*0.7 : glitchMat.opacity*0.85) * smoothProgress;
+    glitchMat.color.setHex(Math.random() < 0.5 ? 0x34e0ff : 0x8b6bff);
+ 
+    // equation glyphs: fade in with assembly, drift, always face camera (Sprite default)
+    glyphSprites.forEach(spr=>{
+      const i = spr.userData.particleIndex;
+      const localT = smoothstep((smoothProgress - delayArr[i]) / 0.45);
+      spr.material.opacity += ((localT * 0.85) - spr.material.opacity) * 0.08;
+      const fx = Math.sin(t*0.5 + spr.userData.floatSeed) * 0.08;
+      const fy = Math.cos(t*0.4 + spr.userData.floatSeed) * 0.08;
+      spr.position.set(posArray[i*3] + fx, posArray[i*3+1] + fy, posArray[i*3+2] + 0.15);
+    });
+ 
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+ 
+</body>
+</html>
+ 
+
+  
