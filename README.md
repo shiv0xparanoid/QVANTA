@@ -2,7 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f0c29,50:4b2e9b,100:00d4ff&height=140&section=header" width="100%" />
 
-<img src="docs/assets/qvanta-logo.png" alt="QVANTA logo" width="170" />
+<img src="docs/qvanta-logo.png" alt="QVANTA logo" width="170" />
 
 # QVANTA
 
