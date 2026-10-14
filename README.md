@@ -1,113 +1,293 @@
-# QVANTA — Quantum Computing Education SaaS (MVP)
+<div align="center">
 
-QVANTA is a production-grade, multi-tenant SaaS platform for interactive quantum computing education. The MVP ships with: structured auth, a 3D drag-drop circuit builder (React Three Fiber), synced Monaco Qiskit editor, Qiskit Aer simulation with measurement histograms, animated 3D Bloch spheres, a 3D virtual human AI tutor with lip-sync and optional Claude RAG, and Stripe Free/Pro tiers.
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f0c29,50:4b2e9b,100:00d4ff&height=220&section=header&text=QVANTA&fontColor=ffffff&fontSize=72&fontAlignY=38&desc=learn%20quantum%20computing%20by%20building%20it%20in%203D&descAlignY=62&descSize=17" width="100%" />
 
-## Monorepo Structure
+<br/>
+
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Qiskit](https://img.shields.io/badge/Qiskit-6929C4?style=for-the-badge&logo=qiskit&logoColor=white)
+![Postgres](https://img.shields.io/badge/Postgres-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+
+**A multi-tenant SaaS for interactive quantum computing education.**
+Drag gates in 3D. Watch Bloch spheres move. Ask a virtual human why.
+
+[![SIH 2026](https://img.shields.io/badge/SIH%202026-Finalist-ff6b35?style=flat-square)](#-about)
+[![Team](https://img.shields.io/badge/Team-Code%20Busters-4b2e9b?style=flat-square)](#-about)
+[![License](https://img.shields.io/badge/License-MIT-00d4ff?style=flat-square)](LICENSE)
+[![GitDiagram](https://img.shields.io/badge/Explore%20on-GitDiagram-0f0c29?style=flat-square)](https://gitdiagram.com/shiv0xparanoid/QVANTA)
+
+[Features](#-features) · [Workflow](#-workflow) · [Structure](#-monorepo-structure) · [Quick Start](#-quick-start) · [Plans](#-plans) · [Checklist](#-mvp-checklist)
+
+</div>
+
+<br/>
+
+## ✦ About
+
+Quantum computing is hard to *see*. QVANTA makes circuits tangible: you build them as 3D objects, simulate them with real Qiskit Aer, and learn alongside an AI tutor that can read your circuit and tell you what's wrong with it.
+
+Built for **early-stage students, professionals and researchers**, and developed by **Team Code Busters** for **Smart India Hackathon 2026**.
+
+<br/>
+
+## ✦ Features
+
+| | Feature | What it does |
+|---|---|---|
+| 🧊 | **3D Circuit Builder** | Drag-and-drop gates onto qubit rails (React Three Fiber), with keyboard navigation and a 2D SVG fallback for mobile |
+| ⌨️ | **Monaco Qiskit Editor** | Two-way sync with the 3D scene, with parse-error markers |
+| ⚛️ | **Real Simulation** | Qiskit Aer via a FastAPI microservice, with measurement histograms (Recharts) |
+| 🌐 | **Bloch Spheres** | Animated per-qubit spheres with step-through |
+| 🧑‍🏫 | **Virtual Human Tutor** | 3D avatar with TTS and lip-sync visemes, and optional Claude RAG |
+| 💳 | **Free / Pro tiers** | Stripe billing with usage guards |
+| 🏫 | **Multi-tenant** | Role-based guards, JWT refresh, Google OAuth routes |
+
+<br/>
+
+## ✦ Workflow
+
+> 🔍 **Interactive version:** open this repo on **[GitDiagram](https://gitdiagram.com/shiv0xparanoid/QVANTA)** to explore the auto-generated, clickable architecture diagram. (Swap `github.com` for `gitdiagram.com` in any repo URL.) The diagrams below are the curated versions.
+
+### 1 · System architecture
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["🖥️  Client · apps/web"]
+        direction TB
+        UI["React + Vite + Tailwind"]
+        B3D["3D Circuit Builder<br/>React Three Fiber"]
+        MON["Monaco Qiskit Editor"]
+        BLOCH["Bloch Spheres"]
+        AVATAR["3D Virtual Human<br/>TTS + lip-sync"]
+        UI --> B3D & MON & BLOCH & AVATAR
+    end
+
+    subgraph API["⚙️  Platform API · apps/api"]
+        direction TB
+        AUTH["Auth · JWT · OAuth"]
+        BILL["Billing · Stripe"]
+        CIRC["Saved Circuits"]
+        TUTOR["tutor.service.ts"]
+        GUARD["Usage Guard"]
+    end
+
+    subgraph SIM["⚛️  Simulator · apps/simulator"]
+        direction TB
+        FAST["FastAPI"]
+        AER["Qiskit Aer"]
+        FAST --> AER
+    end
+
+    subgraph DATA["🗄️  Data · infra"]
+        direction LR
+        PG[("PostgreSQL 16<br/>+ pgvector")]
+        RD[("Redis 7")]
+    end
+
+    subgraph SHARED["📦  packages"]
+        TYPES["@qvanta/types"]
+        UILIB["@qvanta/ui"]
+    end
+
+    CLIENT -->|"/api proxy"| API
+    API -->|"simulate"| SIM
+    API --> PG
+    API --> RD
+    SIM --> RD
+    TUTOR -.->|"optional"| CLAUDE["Claude API"]
+    BILL -.-> STRIPE["Stripe"]
+    SHARED -.-> CLIENT
+    SHARED -.-> API
+
+    classDef client fill:#1a1147,stroke:#4b2e9b,color:#fff
+    classDef api fill:#0b3a4a,stroke:#00d4ff,color:#fff
+    classDef sim fill:#3b1a5a,stroke:#b57bff,color:#fff
+    classDef data fill:#12301f,stroke:#3ddc84,color:#fff
+    class UI,B3D,MON,BLOCH,AVATAR client
+    class AUTH,BILL,CIRC,TUTOR,GUARD api
+    class FAST,AER sim
+    class PG,RD data
+```
+
+### 2 · Simulation flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Learner
+    participant W as Web (3D Builder)
+    participant A as Platform API
+    participant G as Usage Guard
+    participant S as Simulator (FastAPI)
+    participant R as Redis
+
+    U->>W: Drag H, CNOT, Measure
+    U->>W: Click Simulate (1024 shots)
+    W->>A: POST circuit
+    A->>G: Check tier and monthly quota
+    alt over quota
+        G-->>W: 402 Payment Required
+    else allowed
+        A->>S: Run circuit
+        S->>R: Queue / rate limit
+        S->>S: Qiskit Aer
+        S-->>A: Counts
+        A-->>W: Histogram data
+        W-->>U: ~50% 00 · ~50% 11
+    end
+```
+
+### 3 · AI tutor, dual path
+
+```mermaid
+flowchart LR
+    Q["💬 Learner question"] --> T{"ANTHROPIC_API_KEY<br/>set?"}
+    T -->|yes| CM["Claude mode"]
+    T -->|no| DM["Demo mode"]
+
+    CM --> CTX["Context builder<br/>① RAG snippets<br/>② circuit JSON AST<br/>③ heuristic warnings<br/>④ last 8 turns"]
+    CTX --> LLM["claude-3-haiku"]
+
+    DM --> KW["Keyword coaching engine<br/>+ keyword RAG"]
+
+    LLM --> R["Reply"]
+    KW --> R
+    R --> TTS["TTS"] --> LIP["3D lip-sync<br/>closed · A · O"]
+
+    classDef a fill:#1a1147,stroke:#4b2e9b,color:#fff
+    classDef b fill:#0b3a4a,stroke:#00d4ff,color:#fff
+    class CM,CTX,LLM a
+    class DM,KW b
+```
+
+The tutor works with **zero secrets** in demo mode, so everything runs locally out of the box. Pre-flight heuristics catch missing Measure gates, self-targeting CNOTs and out-of-range qubit indices before the LLM ever sees the circuit.
+
+<br/>
+
+## ✦ Monorepo Structure
 
 ```
-.
+qvanta/
 ├── apps/
-│   ├── web/          # React + Vite + Tailwind frontend (3D builder, Monaco, tutor)
-│   ├── api/          # Node.js Express platform API (auth, billing, circuits, tutor dispatch)
-│   └── simulator/    # Python FastAPI quantum simulation microservice (Qiskit Aer + Redis)
+│   ├── web/            # React + Vite + Tailwind · 3D builder, Monaco, tutor
+│   ├── api/            # Node + Express · auth, billing, circuits, tutor dispatch
+│   └── simulator/      # Python FastAPI · Qiskit Aer + Redis
 ├── packages/
-│   ├── types/        # Shared TypeScript types (Circuit, GateOp, TutorMessage, etc.)
-│   └── ui/           # Shared React component library + Tailwind preset
-└── infra/
-    ├── docker-compose.yml     # Postgres 16 + pgvector + Redis 7
-    ├── api/Dockerfile         # API service image
-    ├── simulator/Dockerfile   # Simulator microservice image
-    ├── web/Dockerfile         # Web frontend image
-    └── .github/workflows/ci.yml
+│   ├── types/          # shared TS types (Circuit, GateOp, TutorMessage…)
+│   └── ui/             # shared React components + Tailwind preset
+├── infra/
+│   ├── docker-compose.yml   # Postgres 16 + pgvector, Redis 7
+│   └── */Dockerfile         # api · simulator · web
+└── docs/
 ```
 
-## Quick Start (10 steps, 5–10 minutes)
+<br/>
 
-1. **Prerequisites**: Docker + Docker Compose, Node.js 20+, Python 3.11+, npm.
+## ✦ Quick Start
 
-2. **Start infrastructure** (Postgres with pgvector + Redis):
-   ```bash
-   docker compose -f infra/docker-compose.yml up -d
-   ```
+> ⏱️ About 5 to 10 minutes. **Needs:** Docker + Compose, Node 20+, Python 3.11+.
 
-3. **Install npm dependencies** at the monorepo root:
-   ```bash
-   npm install
-   ```
+```bash
+# 1 · infra
+docker compose -f infra/docker-compose.yml up -d
 
-4. **Copy + fill the env templates** (leave third-party keys blank for demo mode):
-   ```bash
-   cp apps/api/.env.example apps/api/.env
-   cp apps/web/.env.example apps/web/.env
-   cp apps/simulator/.env.example apps/simulator/.env
-   ```
-   Demo-mode notes: the platform runs without `GOOGLE_*`, `STRIPE_*`, or `ANTHROPIC_API_KEY` — Stripe CTA buttons are still present, and the tutor falls back to a keyword-driven canned-reply path.
+# 2 · deps
+npm install
 
-5. **Install Python simulator dependencies** (optional — usage-guard already validates simulator liveness at request time; skip for quick smoke-test):
-   ```bash
-   cd apps/simulator
-   python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+# 3 · env  (third-party keys can stay blank → demo mode)
+cp apps/api/.env.example       apps/api/.env
+cp apps/web/.env.example       apps/web/.env
+cp apps/simulator/.env.example apps/simulator/.env
 
-6. **Initialize Prisma schema + run migrations** in the API:
-   ```bash
-   npm --workspace api run prisma:generate
-   npm --workspace api run prisma:migrate
-   ```
+# 4 · database
+npm --workspace api run prisma:generate
+npm --workspace api run prisma:migrate
+```
 
-7. **Start the FastAPI simulator** (terminal 1, or background):
-   ```bash
-   # From apps/simulator with venv active:
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-   Or, if Python env is not set, the API still boots; simulator requests return a 503 that surfaces cleanly in the UI.
+Then run each service in its own terminal:
 
-8. **Start the Node platform API** (terminal 2):
-   ```bash
-   npm --workspace api run dev
-   ```
-   Listens on `http://localhost:3000`. Seeds an admin user from `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` on first boot.
+```bash
+# simulator
+cd apps/simulator && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-9. **Start the Vite web frontend** (terminal 3):
-   ```bash
-   npm --workspace web run dev
-   ```
-   Vite proxies `/api` → `localhost:3000`. Open `http://localhost:5173`.
+# platform API  →  http://localhost:3000
+npm --workspace api run dev
 
-10. **Smoke-test the MVP happy-path**:
-    1. Register a local email/password user (no Google OAuth needed for dev).
-    2. Dashboard loads → modules list + usage meter (0/50 Free tier).
-    3. Open *Circuit Builder* → drag H onto q0·t0, drag CNOT(q0→q1) to t1 → add Measure on both at t2 → click **Simulate** (1024 shots). Bell histogram should show ~50% `00` and ~50% `11`.
-    4. Open *AI Tutor* → ask "What does H do?" → reply should include the keyword "superposition" → TTS plays → 3D mouth visemes animate between closed/A/O → refresh the page → conversation history persists.
-    5. *Billing* page shows the Free tier. Clicking Upgrade opens the Stripe checkout (mocked checkout session in test mode).
+# web  →  http://localhost:5173
+npm --workspace web run dev
+```
 
-## Tiered Plans
+<details>
+<summary><b>🧪 Smoke test the happy path</b></summary>
 
-| Tier   | Sims / month | Max shots | Builder     | Tutor     | Instructor panels |
-|--------|--------------|-----------|-------------|-----------|-------------------|
-| Free   | 50           | 1024      | 3D + 2D     | Demo mode | —                 |
-| Pro    | Unlimited    | 65536     | 3D + 2D     | Claude RAG| —                 |
-| Inst.  | Per seat     | 65536     | 3D + 2D     | Claude RAG| Classroom dash    |
+<br/>
 
-## AI Tutor — Dual-Path Mode
+1. Register a local email/password user (no OAuth needed in dev)
+2. Open **Circuit Builder** → drag `H` onto q0, `CNOT(q0→q1)`, then `Measure` on both → **Simulate**
+3. The Bell histogram should show ~50% `00` and ~50% `11`
+4. Open **AI Tutor** → ask *"What does H do?"* → the reply mentions *superposition*, the avatar speaks, and history persists on refresh
+5. **Billing** shows the Free tier, and Upgrade opens a Stripe test checkout
 
-`tutor.service.ts` in `apps/api` operates in two modes, auto-detected at boot:
+</details>
 
-- **Claude mode** (when `ANTHROPIC_API_KEY` is set): calls `claude-3-haiku-20240307` with a system prompt that injects (1) pgvector/keyword RAG snippets from `CourseModule.mdxContent`, (2) the current circuit JSON AST, (3) pre-flight heuristic circuit warnings — missing Measure gates, self-target CNOT, out-of-range qubit indices. Up to 8 prior turns are threaded for context.
-- **Demo mode** (no key): falls back to an enhanced keyword-coaching engine, so tutor UX works fully locally without secrets. RAG uses substring keyword scoring on course modules.
+<details>
+<summary><b>🔑 Demo mode</b></summary>
 
-## MVP Acceptance Criteria Checklist
+<br/>
 
-| #  | Criterion                                                                                  | Status |
-|----|--------------------------------------------------------------------------------------------|--------|
-| 1  | Monorepo apps/{web,api,simulator}, packages/{ui,types}, infra/ all present and buildable  | ✅      |
-| 2  | Register / login (email + Google OAuth routes), JWT refresh, role-based guards            | ✅      |
-| 3  | 3D drag-drop circuit builder (qubit rails, gate snap, keyboard nav, 2D fallback)          | ✅      |
-| 4  | Monaco Qiskit editor ↔ 3D scene bidirectional sync with parse-error markers              | ✅      |
-| 5  | Bell circuit simulation returns ~00 + ~11 counts; histogram renders via Recharts          | ✅      |
-| 6  | Tutor replies with "superposition" for H-gate Q; 3D avatar TTS with lip-sync; persistence | ✅      |
-| 7  | Stripe Free (50 sim cap) / Pro tiers; webhook → user.tier; usage-guard throws 402 at cap  | ✅      |
-| 8  | Per-qubit Bloch spheres; step-through animation shows |0⟩→|+⟩ after H                   | ✅      |
-| 9  | Mobile-responsive sidebar + Lite 2D SVG fallback toggle                                   | ✅      |
-| 10 | `npm -w @qvanta/types/ui build`, `npm -w api typecheck`, `npm -w web build` all exit 0    | ✅      |
+The platform boots without `GOOGLE_*`, `STRIPE_*` or `ANTHROPIC_API_KEY`. Stripe buttons are still present, and the tutor falls back to the keyword engine. If the simulator isn't running, the API still starts and simulate requests return a clean `503` in the UI.
+
+</details>
+
+<br/>
+
+## ✦ Plans
+
+| Tier | Sims / month | Max shots | Builder | Tutor | Extras |
+|---|---|---|---|---|---|
+| 🆓 **Free** | 50 | 1,024 | 3D + 2D | Demo mode | — |
+| ⚡ **Pro** | Unlimited | 65,536 | 3D + 2D | Claude RAG | — |
+| 🏫 **Institution** | Per seat | 65,536 | 3D + 2D | Claude RAG | Classroom dashboard |
+
+<br/>
+
+## ✦ MVP Checklist
+
+- [x] Monorepo with `apps/{web,api,simulator}`, `packages/{ui,types}`, `infra/`
+- [x] Register / login, Google OAuth routes, JWT refresh, role-based guards
+- [x] 3D drag-drop builder with qubit rails, gate snap, keyboard nav, 2D fallback
+- [x] Monaco ↔ 3D scene sync with parse-error markers
+- [x] Bell circuit simulation with Recharts histogram
+- [x] Tutor with TTS, lip-sync and persistent history
+- [x] Stripe Free/Pro tiers, webhook → tier, usage guard returns 402 at cap
+- [x] Per-qubit Bloch spheres with step-through animation
+- [x] Mobile-responsive sidebar and Lite 2D toggle
+- [x] `types`/`ui` build, `api` typecheck and `web` build all pass
+
+<br/>
+
+## ✦ Roadmap
+
+- [ ] Instructor classroom dashboard
+- [ ] More simulator backends (PennyLane, Cirq)
+- [ ] Org-scoped tenant isolation hardening
+- [ ] Deeper algorithm modules (Grover, QFT, VQE)
+
+<br/>
+
+<div align="center">
+
+Built by **[Shivang](https://github.com/shiv0xparanoid)** · Team **Code Busters** · SIH 2026
+
+<sub>If QVANTA helped you see a qubit for the first time, drop a ⭐</sub>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:00d4ff,50:4b2e9b,100:0f0c29&height=120&section=footer" width="100%" />
+
+</div>
