@@ -1,6 +1,12 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f0c29,50:4b2e9b,100:00d4ff&height=220&section=header&text=QVANTA&fontColor=ffffff&fontSize=72&fontAlignY=38&desc=learn%20quantum%20computing%20by%20building%20it%20in%203D&descAlignY=62&descSize=17" width="100%" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f0c29,50:4b2e9b,100:00d4ff&height=140&section=header" width="100%" />
+
+<img src="docs/assets/qvanta-logo.png" alt="QVANTA logo" width="170" />
+
+# QVANTA
+
+<sub><b>learn quantum computing by building it in 3D</b></sub>
 
 <br/>
 
